@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.1.1";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -53,9 +53,17 @@ function probeBox() {
 }
 function boxHeight() { return probeBox().h; }
 let stageH = 0;
+// Right after launch (or when opened from a notification) iOS can report the status bar's height as 0
+// for a moment. The status bar style is fixed when the app is added to the Home Screen, so once this
+// copy has seen its page under the status bar, remember it, and check again shortly after starting.
+function underStatusBar() {
+  if (!standaloneMode() || !/iPhone|iPad|iPod/.test(navigator.userAgent)) return false;
+  if (probeBox().top > 0) { store.set("underBar", true); return true; }
+  return store.get("underBar", false);
+}
 function fitStage() {
   let h = window.innerHeight;
-  if (standaloneMode() && /iPhone|iPad|iPod/.test(navigator.userAgent) && probeBox().top > 0) {
+  if (underStatusBar()) {
     const portrait = window.matchMedia("(orientation: portrait)").matches;
     const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
     h = Math.max(full, window.innerHeight);
@@ -63,8 +71,11 @@ function fitStage() {
   if (h !== stageH) { stageH = h; document.documentElement.style.setProperty("--stage-h", h + "px"); }
 }
 fitStage();
+[100, 400, 1200, 3000].forEach(ms => setTimeout(fitStage, ms));
 window.addEventListener("resize", fitStage);
+window.addEventListener("pageshow", fitStage);
 window.addEventListener("orientationchange", () => setTimeout(fitStage, 300));
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { fitStage(); setTimeout(fitStage, 400); } });
 // the page is a little taller than iOS's view of the screen; keep it from sliding up (except while typing in a panel)
 window.addEventListener("scroll", () => { if (window.scrollY && !document.querySelector("dialog.sheet[open]")) window.scrollTo(0, 0); }, { passive: true });
 
