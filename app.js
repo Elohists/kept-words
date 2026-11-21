@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.9";
+const APP_VERSION = "1.1.0";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -38,18 +38,35 @@ const ago = t => {
   const d = Math.round(h / 24); return d < 30 ? `${d} day${d === 1 ? "" : "s"} ago` : new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-/* Screen measurements, shown at the bottom of Settings to help diagnose layout problems.
-   (The status bar is solid black, set in index.html: with a see-through status bar, iPhones give
-   Home Screen web apps a drawing area that stops a status bar's height short of the bottom.) */
+/* The stage: one screen-sized base that holds the whole app (see styles.css).
+   With a see-through status bar (the page starts under the clock), iPhones cut off anything pinned to
+   the screen a status bar's height above the bottom, but draw the page itself all the way down.
+   So the stage is made as tall as the real screen. With a solid status bar it's just the page height. */
 function standaloneMode() { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
-function boxHeight() {
+function probeBox() {
   const probe = document.createElement("div");
-  probe.style.cssText = "position:fixed;top:0;left:0;width:1px;height:100%;visibility:hidden;pointer-events:none";
+  probe.style.cssText = "position:fixed;top:0;left:0;width:1px;height:100%;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px);box-sizing:content-box";
   document.documentElement.appendChild(probe);
-  const h = Math.round(probe.getBoundingClientRect().height);
+  const cs = getComputedStyle(probe), r = { h: Math.round(parseFloat(cs.height)), top: parseFloat(cs.paddingTop) || 0 };
   probe.remove();
-  return h;
+  return r;
 }
+function boxHeight() { return probeBox().h; }
+let stageH = 0;
+function fitStage() {
+  let h = window.innerHeight;
+  if (standaloneMode() && /iPhone|iPad|iPod/.test(navigator.userAgent) && probeBox().top > 0) {
+    const portrait = window.matchMedia("(orientation: portrait)").matches;
+    const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    h = Math.max(full, window.innerHeight);
+  }
+  if (h !== stageH) { stageH = h; document.documentElement.style.setProperty("--stage-h", h + "px"); }
+}
+fitStage();
+window.addEventListener("resize", fitStage);
+window.addEventListener("orientationchange", () => setTimeout(fitStage, 300));
+// the page is a little taller than iOS's view of the screen; keep it from sliding up (except while typing in a panel)
+window.addEventListener("scroll", () => { if (window.scrollY && !document.querySelector("dialog.sheet[open]")) window.scrollTo(0, 0); }, { passive: true });
 
 /* film grain tile */
 (function makeGrain() {
@@ -568,8 +585,21 @@ $("#modeAll").onclick = () => S.mode !== "all" && setMode("all");
 $("#modeFav").onclick = () => S.mode !== "fav" && setMode("fav");
 
 /* ============ sheets ============ */
-function openSheet(d) { document.body.classList.remove("bare"); if (!d.open) d.showModal(); }
-$$("dialog.sheet").forEach(d => d.addEventListener("click", e => { if (e.target === d || e.target.closest("[data-close]")) d.close(); }));
+/* panels open inside the stage (not as built-in modal dialogs, which iPhones pin to the screen and cut off) */
+function openSheet(d) {
+  document.body.classList.remove("bare");
+  $$("dialog.sheet[open]").forEach(o => { if (o !== d) o.close(); });
+  $("#sheetScrim").hidden = false;
+  if (!d.open) d.show();
+}
+$$("dialog.sheet").forEach(d => {
+  d.addEventListener("click", e => { if (e.target.closest("[data-close]")) d.close(); });
+  d.addEventListener("close", () => {
+    if (!document.querySelector("dialog.sheet[open]")) { $("#sheetScrim").hidden = true; if (window.scrollY) window.scrollTo(0, 0); }
+  });
+});
+$("#sheetScrim").addEventListener("click", () => $$("dialog.sheet[open]").forEach(d => d.close()));
+document.addEventListener("keydown", e => { if (e.key === "Escape") $$("dialog.sheet[open]").forEach(d => d.close()); });
 
 /* connect */
 function connect(v) {
@@ -780,7 +810,7 @@ function syncSettings() {
   const favs = [...S.quotes.values()].filter(isFav).length, au = new Set([...S.quotes.values()].map(q => q.a).filter(Boolean)).size;
   $("#setStats").textContent = S.quotes.size ? `${fmt(S.quotes.size)} quotes from ${fmt(au)} people · ${fmt(favs)} favorites` : "";
   // screen measurements help when something doesn't fill the screen
-  $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxHeight()}${standaloneMode() ? " · home screen" : ""}`;
+  $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxHeight()} · stage ${stageH} · top ${probeBox().top}${standaloneMode() ? " · home screen" : ""}`;
 }
 function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid) { releaseBg(c); assignBg(c); } }); schedule(); }
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });

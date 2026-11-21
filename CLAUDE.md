@@ -11,6 +11,17 @@ Read README.md first for the architecture and the owner's setup.
 - No quote numbers are shown in the app.
 - The doc is newest first: the app's + button inserts new quotes at the top of the doc, above the first quote and below the "Words of Life" title (`doPost` in `apps-script/Code.gs`).
 
+## The full-screen layout (iPhone)
+- Tested on an iPhone 16 Pro Max Home Screen app (lab/ screen test): with the see-through status bar
+  (`black-translucent`), anything `position: fixed` (and built-in modal `<dialog>`s) is clipped 62 pt
+  (the status bar height) above the bottom; `innerHeight` is 894 on a 956 pt screen. Content in the
+  page's normal flow does paint to the bottom.
+- So the whole app lives in `#stage` (absolute, height `--stage-h` = the real screen height when the page
+  starts under the status bar), and sheets are opened with `dialog.show()` inside the stage with our own
+  `#sheetScrim`. Don't reintroduce `position: fixed` or `showModal()` for anything that must reach the bottom.
+- iOS remembers the status bar style from when the app was added to the Home Screen; changing the meta tag
+  only affects new installs.
+
 ## Making a change
 - `docparse.js` is shared by the app (browser) and `scripts/notify.cjs` (Node). Keep it plain JS that works in both.
 - **Bump `VERSION` in `sw.js` (and `APP_VERSION` in `app.js`) on every change to app files**, or phones keep serving the old copy.

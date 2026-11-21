@@ -23,8 +23,12 @@ html { height: 100%; box-sizing: border-box; background: var(--night); }
 [hidden] { display: none !important; }
 img { max-width: 100%; }
 *, *::before, *::after { box-sizing: inherit; }
+/* Kept Words sits on one screen-sized stage instead of being pinned to the screen.
+   On iPhone Home Screen apps with a see-through status bar, anything pinned (position: fixed,
+   and built-in modal dialogs) is cut off a status bar's height above the bottom, while the page
+   itself is drawn all the way down. --stage-h is set by app.js. */
 body {
-  height: 100%; margin: 0; overflow: hidden;
+  min-height: var(--stage-h, 100%); margin: 0;
   background: var(--night); color: var(--paper);
   font-family: var(--f-sans); font-size: 15px;
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
@@ -33,8 +37,9 @@ button { font: inherit; color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, label:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 /* ---------- Feed ---------- */
+#stage { position: absolute; top: 0; left: 0; right: 0; height: var(--stage-h, 100%); overflow: hidden; }
 .feed {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow-y: auto; overflow-x: hidden;
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow-y: auto; overflow-x: hidden;
   scroll-snap-type: y mandatory; overscroll-behavior-y: contain;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-y;
 }
@@ -113,7 +118,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, label:focus-w
 
 /* ---------- Floating chrome ---------- */
 .topbar, .dock {
-  position: fixed; left: 0; right: 0; z-index: 5;
+  position: absolute; left: 0; right: 0; z-index: 5; touch-action: none;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding-left: max(14px, env(safe-area-inset-left, 0px));
   padding-right: max(14px, env(safe-area-inset-right, 0px));
@@ -150,7 +155,7 @@ body.bare .topbar > *, body.bare .dock > * { pointer-events: none; }
 body.readonly .write-only { display: none !important; }
 
 .burst {
-  position: fixed; left: 50%; top: 50%; width: 110px; height: 110px; margin: -55px 0 0 -55px;
+  position: absolute; left: 50%; top: 50%; width: 110px; height: 110px; margin: -55px 0 0 -55px;
   z-index: 6; pointer-events: none; opacity: 0;
 }
 .burst svg { width: 100%; height: 100%; fill: var(--heart); filter: drop-shadow(0 6px 20px rgba(0,0,0,.4)); }
@@ -158,7 +163,7 @@ body.readonly .write-only { display: none !important; }
 @keyframes burst { 0% { opacity: 0; transform: scale(.3); } 25% { opacity: 1; transform: scale(1.1); } 60% { opacity: 1; transform: scale(.95); } 100% { opacity: 0; transform: scale(1.25); } }
 
 .toast {
-  position: fixed; left: 50%; z-index: 30; transform: translate(-50%, 12px);
+  position: absolute; left: 50%; z-index: 30; transform: translate(-50%, 12px);
   bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
   background: rgba(20,21,27,.92); border: 1px solid var(--glass-line); color: var(--paper);
   padding: 10px 16px; border-radius: 14px; font-size: 14px; font-weight: 500;
@@ -169,15 +174,16 @@ body.readonly .write-only { display: none !important; }
 
 /* ---------- Sheets ---------- */
 dialog.sheet {
-  border: 0; padding: 0; margin: auto auto 0; width: 100%; max-width: 560px;
-  max-height: min(90dvh, 900px); border-radius: 22px 22px 0 0;
+  position: absolute; left: 0; right: 0; top: auto; bottom: 0; z-index: 20;
+  border: 0; padding: 0; margin: 0 auto; width: 100%; max-width: 560px;
+  max-height: min(90%, 900px); border-radius: 22px 22px 0 0;
   background: var(--sheet); color: var(--paper);
   box-shadow: 0 -10px 40px rgba(0,0,0,.5); overflow: hidden;
   display: none; flex-direction: column;
 }
 dialog.sheet[open] { display: flex; animation: up .28s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes up { from { transform: translateY(40px); opacity: .4; } to { transform: none; opacity: 1; } }
-dialog.sheet::backdrop { background: rgba(0,0,0,.55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+#sheetScrim { position: absolute; inset: 0; z-index: 15; background: rgba(0,0,0,.55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); touch-action: none; }
 .sh-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 16px 18px 12px; border-bottom: 1px solid var(--sheet-line); flex: none;
