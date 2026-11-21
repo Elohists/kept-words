@@ -7,8 +7,10 @@ const path = require("path");
 const webpush = require("web-push");
 const { parseDocText } = require("../docparse.js");
 
-const SCRIPT_URL = process.env.SCRIPT_URL;
-const PRIVATE = process.env.VAPID_PRIVATE_KEY;
+// secrets pasted into GitHub often pick up a stray space, line break or quote marks; ignore those
+const clean = v => String(v || "").replace(/[\s"'\u201C\u201D]/g, "");
+const SCRIPT_URL = clean(process.env.SCRIPT_URL);
+const PRIVATE = clean(process.env.VAPID_PRIVATE_KEY).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 const SUBJECT = process.env.VAPID_SUBJECT || "https://github.com";
 const PUBLIC = (fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8").match(/VAPID_PUBLIC = "([^"]+)"/) || [])[1];
 
@@ -30,6 +32,9 @@ async function getJson(url, opts) {
   if (!SCRIPT_URL || !PRIVATE || !PUBLIC) {
     console.log("Notifications aren't set up yet: add the SCRIPT_URL and VAPID_PRIVATE_KEY repository secrets.");
     return;
+  }
+  if (!/^[A-Za-z0-9_-]{43}$/.test(PRIVATE)) {
+    throw new Error(`The VAPID_PRIVATE_KEY secret doesn't look right: it should be one line of 43 letters, numbers, - and _, but it has ${PRIVATE.length} characters. Paste it again from the key file.`);
   }
   webpush.setVapidDetails(SUBJECT, PUBLIC, PRIVATE);
   const s = await getJson(SCRIPT_URL + (SCRIPT_URL.includes("?") ? "&" : "?") + "action=subs");
