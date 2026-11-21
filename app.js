@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.1";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -98,6 +98,8 @@ function errText(e) {
   if (c === "script") return "Your script answered with an error: " + (e.message || "unknown") + ".";
   if (c === "timeout") return "Google took too long to answer. Try Refresh in a minute.";
   if (c === "bad") return "That link didn't answer like the Kept Words script. Check that you pasted the web app link that ends in /exec.";
+  // Google answers a link it won't serve publicly with a sign-in page, which the browser blocks; it looks like a network error
+  if (c === "network") return "Google didn't hand over your quotes. Open your connection link in Safari: if it shows a sign-in page, set the web app's access to “Anyone” (Deploy → Manage deployments → edit → New version), and check the link ends in /exec.";
   return "Couldn't reach your Google Doc. Check your connection and try Refresh.";
 }
 function acceptDoc(j) {
