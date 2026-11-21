@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.4";
+const APP_VERSION = "1.0.5";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -40,9 +40,10 @@ const ago = t => {
 
 /* iPhone Home Screen apps with a see-through status bar are given a page shorter than the screen,
    which leaves a black strip at the bottom. Measure the real screen and stretch the app over the gap. */
+function standaloneMode() { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
 function fitScreen() {
   let gap = 0;
-  const sa = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const sa = standaloneMode();
   if (sa && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
     const portrait = window.matchMedia("(orientation: portrait)").matches;
     const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
@@ -687,7 +688,9 @@ function syncSettings() {
   $("#hiddenNote").textContent = `${fmt(hidden)} quote${hidden === 1 ? " is" : "s are"} hidden from your feed on this phone.`;
   const favs = [...S.quotes.values()].filter(isFav).length, au = new Set([...S.quotes.values()].map(q => q.a).filter(Boolean)).size;
   $("#setStats").textContent = S.quotes.size ? `${fmt(S.quotes.size)} quotes from ${fmt(au)} people · ${fmt(favs)} favorites` : "";
-  $("#version").textContent = `Kept Words ${APP_VERSION}`;
+  const gap = getComputedStyle(document.documentElement).getPropertyValue("--gap").trim() || "0px";
+  // screen measurements help when something doesn't fill the screen
+  $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · gap ${gap}${standaloneMode() ? " · home screen" : ""}`;
 }
 function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid) { releaseBg(c); assignBg(c); } }); schedule(); }
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });
@@ -742,7 +745,12 @@ if (S.doc && S.doc.text) S.quotes = new Map(parseDocText(S.doc.text).map((p, i) 
 takeHashQuote();
 refreshAuthors(); updateCount(); resetFeed();
 // photos load after the first screens are built, so give those screens a fresh pick once they're in
-loadPhotos().then(() => { if (S.photos.length && S.bg !== "painted") rebg(true); });
+loadPhotos().then(() => {
+  if (!S.photos.length) return;
+  // photos added before version 1.0.4 left the style on Painted; switch unless Painted was picked on purpose
+  if (S.bg === "painted" && store.get("bg", null) === null) { S.bg = "photos"; store.set("bg", "photos"); }
+  if (S.bg !== "painted") rebg(true);
+});
 refresh(false);
 
 // check the doc again when the app comes back to the foreground after a while
@@ -755,5 +763,23 @@ document.addEventListener("visibilitychange", () => {
 let rz;
 window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { cards.forEach(c => { if (c.qid) fillCard(c); releaseBg(c); }); schedule(); }, 250); });
 
-if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(e => console.warn("sw", e));
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(e => console.warn("sw", e));
+  // when a new version takes over, reload: right away if the app just opened, otherwise the next time it comes back
+  const openedAt = Date.now(); let pendingReload = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (Date.now() - openedAt < 8000) location.reload(); else pendingReload = true;
+  });
+  document.addEventListener("visibilitychange", () => { if (pendingReload && document.visibilityState === "visible") location.reload(); });
+}
+$("#updateNow").onclick = async () => {
+  const b = $("#updateNow"); b.textContent = "Checking…"; b.disabled = true;
+  try {
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if (reg) await reg.update();
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => /^kw-\d/.test(k)).map(k => caches.delete(k)));
+  } catch (e) { console.warn("update", e); }
+  location.reload();
+};
 })();

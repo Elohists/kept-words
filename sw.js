@@ -1,6 +1,6 @@
 /* Kept Words — service worker: makes the app open with no internet.
    Bump VERSION whenever any app file changes so phones pick up the new files. */
-const VERSION = "kw-1.0.4";
+const VERSION = "kw-1.0.5";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "painter.js", "docparse.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 const RUNTIME = "kw-runtime";
@@ -8,7 +8,8 @@ const PHOTOS = "kw-photos";
 const MAX_PHOTOS = 80;
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // "reload" skips the browser's own 10-minute copy so a new version never installs old files
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => ![VERSION, RUNTIME, PHOTOS, "kw-data"].includes(k)).map(k => caches.delete(k)))).then(() => self.clients.claim()));
@@ -28,7 +29,7 @@ self.addEventListener("fetch", e => {
 
   // app files: try the network first so updates arrive, fall back to the saved copy offline
   if (url.origin === location.origin) {
-    e.respondWith(fetch(req).then(res => {
+    e.respondWith(fetch(req, { cache: "no-cache" }).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match("index.html"))));
