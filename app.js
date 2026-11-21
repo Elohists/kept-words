@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -258,7 +258,8 @@ function bgKind() {
   return "paint";
 }
 function pickPhoto(seed) {
-  const own = S.photos.length, useOwn = own && (!S.online || Math.random() < .5);
+  // your own photos come first; online photos only fill in a quarter of the time
+  const own = S.photos.length, useOwn = own && (!S.online || Math.random() < .75);
   if (useOwn) {
     let p = S.photos[Math.floor(Math.random() * own)];
     if (own > 1 && p.id === lastPhoto) p = S.photos[(S.photos.indexOf(p) + 1) % own];
@@ -688,7 +689,7 @@ function syncSettings() {
   $("#setStats").textContent = S.quotes.size ? `${fmt(S.quotes.size)} quotes from ${fmt(au)} people · ${fmt(favs)} favorites` : "";
   $("#version").textContent = `Kept Words ${APP_VERSION}`;
 }
-function rebg() { cards.forEach((c, i) => { if (i !== current && c.qid) { releaseBg(c); assignBg(c); } }); schedule(); }
+function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid) { releaseBg(c); assignBg(c); } }); schedule(); }
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });
 $("#f-online").onchange = e => { S.online = e.target.checked; store.set("online", S.online); syncSettings(); rebg(); };
 $$("[data-font]").forEach(b => b.onclick = () => { S.font = b.dataset.font; store.set("font", S.font); syncSettings(); });
@@ -727,8 +728,10 @@ async function uploadPhotos(files) {
     catch (e) { console.warn(e); toast(`Couldn't add ${f.name || "that photo"}.`, 3000); }
   }
   $("#photoNote").textContent = "Add pictures from your camera roll. They stay on this phone.";
-  await loadPhotos(); renderPhotos(); syncSettings();
-  if (ok) toast(`Added ${ok} photo${ok === 1 ? "" : "s"}`);
+  await loadPhotos(); renderPhotos();
+  if (ok && S.bg === "painted") { S.bg = "photos"; store.set("bg", S.bg); }
+  syncSettings(); rebg();
+  if (ok) toast(`Added ${ok} photo${ok === 1 ? "" : "s"}. Your next quotes will use them.`, 2600);
 }
 
 /* ============ boot ============ */
@@ -738,7 +741,8 @@ $("#modeFav").setAttribute("aria-pressed", String(S.mode === "fav"));
 if (S.doc && S.doc.text) S.quotes = new Map(parseDocText(S.doc.text).map((p, i) => [p.k, { id: p.k, t: p.t, a: p.a, i }]));
 takeHashQuote();
 refreshAuthors(); updateCount(); resetFeed();
-loadPhotos();
+// photos load after the first screens are built, so give those screens a fresh pick once they're in
+loadPhotos().then(() => { if (S.photos.length && S.bg !== "painted") rebg(true); });
 refresh(false);
 
 // check the doc again when the app comes back to the foreground after a while
