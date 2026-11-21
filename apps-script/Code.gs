@@ -59,20 +59,22 @@ function doPost(e) {
     const doc = doc_();
     const body_ = doc.getBody();
     const paras = body_.getParagraphs();
-    // insert just above the "Longer Quotes…" heading, after the blank lines that precede it
-    let at = paras.length;
+    // newest first: insert above the first quote in the doc (below any title such as "Words of Life")
+    let first = -1;
     for (let i = 0; i < paras.length; i++) {
-      if (CUTOFF.test(paras[i].getText())) { at = i; break; }
+      if (CUTOFF.test(paras[i].getText())) break;
+      if (/^\s*["\u201C\u201D]/.test(paras[i].getText())) { first = i; break; }
     }
-    let idx = at < paras.length ? body_.getChildIndex(paras[at]) : body_.getNumChildren();
-    while (idx > 0) {
-      const prev = body_.getChild(idx - 1);
-      if (prev.getType() === DocumentApp.ElementType.PARAGRAPH && prev.asParagraph().getText().trim() === '') idx--;
-      else break;
-    }
-    const lines = ['', '', '“' + t.replace(/^["“”]+|["“”]+$/g, '') + '”'];
-    if (a) lines.push('- ' + a);
-    lines.forEach((line, i) => body_.insertParagraph(idx + i, line).setHeading(DocumentApp.ParagraphHeading.NORMAL));
+    const idx = first >= 0 ? body_.getChildIndex(paras[first]) : body_.getNumChildren();
+    const quoteLine = '\u201C' + t.replace(/^["\u201C\u201D]+|["\u201C\u201D]+$/g, '') + '\u201D';
+    const lines = a ? [quoteLine, '- ' + a, '', ''] : [quoteLine, '', ''];
+    // copy the look (font, size) of the quote and author lines already in the doc
+    const looks = first >= 0 ? [paras[first], paras[first + 1] || paras[first]] : [];
+    lines.forEach((line, i) => {
+      const p = body_.insertParagraph(idx + i, line);
+      const like = looks[Math.min(i, 1)];
+      try { if (like) p.setAttributes(like.getAttributes()); else p.setHeading(DocumentApp.ParagraphHeading.NORMAL); } catch (e) {}
+    });
     return reply_(quotesFrom_(doc));
   } catch (err) {
     return reply_({ ok: false, error: String(err.message || err) });

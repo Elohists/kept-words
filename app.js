@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.0.6";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -41,13 +41,19 @@ const ago = t => {
 /* iPhone Home Screen apps with a see-through status bar are given a page shorter than the screen,
    which leaves a black strip at the bottom. Measure the real screen and stretch the app over the gap. */
 function standaloneMode() { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
+let boxH = 0;
 function fitScreen() {
   let gap = 0;
-  const sa = standaloneMode();
-  if (sa && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+  // measure the box the app is really drawn in: a fixed element at 100% height, the same way the feed is sized
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;top:0;left:0;width:1px;height:100%;visibility:hidden;pointer-events:none";
+  document.documentElement.appendChild(probe);
+  boxH = Math.round(probe.getBoundingClientRect().height);
+  probe.remove();
+  if (standaloneMode() && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
     const portrait = window.matchMedia("(orientation: portrait)").matches;
     const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
-    gap = Math.max(0, Math.min(120, full - window.innerHeight));
+    gap = Math.max(0, Math.min(140, full - Math.min(boxH, window.innerHeight)));
   }
   document.documentElement.style.setProperty("--gap", gap + "px");
 }
@@ -690,7 +696,7 @@ function syncSettings() {
   $("#setStats").textContent = S.quotes.size ? `${fmt(S.quotes.size)} quotes from ${fmt(au)} people · ${fmt(favs)} favorites` : "";
   const gap = getComputedStyle(document.documentElement).getPropertyValue("--gap").trim() || "0px";
   // screen measurements help when something doesn't fill the screen
-  $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · gap ${gap}${standaloneMode() ? " · home screen" : ""}`;
+  $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxH} · gap ${gap}${standaloneMode() ? " · home screen" : ""}`;
 }
 function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid) { releaseBg(c); assignBg(c); } }); schedule(); }
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });
