@@ -34,7 +34,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, label:focus-w
 
 /* ---------- Feed ---------- */
 .feed {
-  position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden;
+  position: fixed; top: 0; left: 0; right: 0; height: calc(100% + var(--gap, 0px)); overflow-y: auto; overflow-x: hidden;
   scroll-snap-type: y mandatory; overscroll-behavior-y: contain;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-y;
 }
@@ -119,7 +119,7 @@ body[data-font="script"] .q-text { font-family: var(--f-script); font-weight: 60
   pointer-events: none; transition: opacity .25s ease, transform .25s ease;
 }
 .topbar { top: 0; padding-top: calc(env(safe-area-inset-top, 0px) + 12px); }
-.dock { bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+.dock { bottom: calc(-1 * var(--gap, 0px)); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
 .topbar > *, .dock > * { pointer-events: auto; }
 body.bare .topbar { opacity: 0; transform: translateY(-8px); }
 body.bare .dock { opacity: 0; transform: translateY(8px); }
@@ -149,7 +149,7 @@ body.bare .topbar > *, body.bare .dock > * { pointer-events: none; }
 body.readonly .write-only { display: none !important; }
 
 .burst {
-  position: fixed; left: 50%; top: 50%; width: 110px; height: 110px; margin: -55px 0 0 -55px;
+  position: fixed; left: 50%; top: calc(50% + var(--gap, 0px) / 2); width: 110px; height: 110px; margin: -55px 0 0 -55px;
   z-index: 6; pointer-events: none; opacity: 0;
 }
 .burst svg { width: 100%; height: 100%; fill: var(--heart); filter: drop-shadow(0 6px 20px rgba(0,0,0,.4)); }
@@ -158,7 +158,7 @@ body.readonly .write-only { display: none !important; }
 
 .toast {
   position: fixed; left: 50%; z-index: 30; transform: translate(-50%, 12px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px - var(--gap, 0px));
   background: rgba(20,21,27,.92); border: 1px solid var(--glass-line); color: var(--paper);
   padding: 10px 16px; border-radius: 14px; font-size: 14px; font-weight: 500;
   max-width: calc(100% - 32px); width: max-content; text-align: center;
@@ -168,7 +168,7 @@ body.readonly .write-only { display: none !important; }
 
 /* ---------- Sheets ---------- */
 dialog.sheet {
-  border: 0; padding: 0; margin: auto auto 0; width: 100%; max-width: 560px;
+  border: 0; padding: 0; margin: auto auto calc(-1 * var(--gap, 0px)); width: 100%; max-width: 560px;
   max-height: min(90dvh, 900px); border-radius: 22px 22px 0 0;
   background: var(--sheet); color: var(--paper);
   box-shadow: 0 -10px 40px rgba(0,0,0,.5); overflow: hidden;

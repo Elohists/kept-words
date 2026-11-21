@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.0.3";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -37,6 +37,22 @@ const ago = t => {
   const h = Math.round(m / 60); if (h < 24) return `${h} hour${h === 1 ? "" : "s"} ago`;
   const d = Math.round(h / 24); return d < 30 ? `${d} day${d === 1 ? "" : "s"} ago` : new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
+
+/* iPhone Home Screen apps with a see-through status bar are given a page shorter than the screen,
+   which leaves a black strip at the bottom. Measure the real screen and stretch the app over the gap. */
+function fitScreen() {
+  let gap = 0;
+  const sa = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  if (sa && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+    const portrait = window.matchMedia("(orientation: portrait)").matches;
+    const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    gap = Math.max(0, Math.min(120, full - window.innerHeight));
+  }
+  document.documentElement.style.setProperty("--gap", gap + "px");
+}
+fitScreen();
+window.addEventListener("resize", fitScreen);
+window.addEventListener("orientationchange", () => setTimeout(fitScreen, 300));
 
 /* film grain tile */
 (function makeGrain() {
