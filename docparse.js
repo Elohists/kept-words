@@ -4,7 +4,7 @@ const OPENQ = /^["“”„«‘']/;
 const INVIS = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
 function cleanText(t) {
   return String(t || "").replace(INVIS, "").split("\n").map(l => l.replace(/[ \t ]+/g, " ").trim()).filter(Boolean).join("\n")
-    .replace(/^["“”„«'‘’]+|["“”»'’]+$/g, "").trim();
+    .replace(/^["“”„«]+|["“”»]+$/g, "").trim();
 }
 const AUTHOR_NAMES = { "father": "Father Ahnsahnghong", "mother": "Heavenly Mother", "k ellen": "Elderess Ellen", "kwansanim ellen": "Elderess Ellen" };
 function cleanAuthor(a) {

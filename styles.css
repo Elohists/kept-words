@@ -75,8 +75,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, label:focus-w
   text-wrap: balance; overflow-wrap: anywhere; white-space: pre-line;
   font-variation-settings: "opsz" 48;
 }
-body[data-font="sans"] .q-text { font-family: var(--f-sans); font-weight: 600; line-height: 1.22; letter-spacing: -.015em; }
-body[data-font="script"] .q-text { font-family: var(--f-script); font-weight: 600; line-height: 1.12; font-size: calc(var(--fs, 30px) * 1.28); }
+.card[data-font="italic"] .q-text { font-style: italic; }
+.card[data-font="sans"] .q-text { font-family: var(--f-sans); font-weight: 600; line-height: 1.22; letter-spacing: -.015em; }
+.card[data-font="script"] .q-text { font-family: var(--f-script); font-weight: 600; line-height: 1.12; font-size: calc(var(--fs, 30px) * 1.28); }
 .q-meta { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .q-author {
   font-family: var(--f-sans); font-size: 13px; font-weight: 600;
@@ -264,3 +265,9 @@ dialog.sheet::backdrop { background: rgba(0,0,0,.55); -webkit-backdrop-filter: b
 a.pbtn { text-decoration: none; }
 .version { font-size: 12px; color: var(--paper-faint); }
 .hoursel { border: 1px solid var(--sheet-line); background: var(--sheet-2); color: var(--paper); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 16px; }
+.segctl.wrap { flex-wrap: wrap; }
+.segctl.wrap button { flex: 1 1 30%; }
+.segctl .f-italic { font-family: var(--f-serif); font-style: italic; font-size: 16px; }
+/* the finished picture, when the phone can't open the share sheet directly */
+.shot { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.shot img { width: 100%; max-width: 360px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.5); -webkit-touch-callout: default; user-select: auto; }

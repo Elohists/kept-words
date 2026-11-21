@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.7";
+const APP_VERSION = "1.0.8";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -80,7 +80,7 @@ const S = {
   photos: [],                           // [{id, url}] from IndexedDB
   mode: store.get("mode", "all"),
   bg: store.get("bg", "painted"),
-  font: store.get("font", "serif"),
+  font: store.get("font", "random"),
   online: store.get("online", true),
   loading: false, error: "",
 };
@@ -277,6 +277,13 @@ function fontSize(t) {
   px = Math.max(15, Math.min(38, px));
   return px * Math.max(.85, Math.min(1.3, w / 390));
 }
+const FONTS = ["serif", "italic", "sans", "script"];
+let lastFont = "";
+function pickFont() {
+  if (S.font !== "random") return S.font;
+  const choices = FONTS.filter(f => f !== lastFont);
+  return (lastFont = choices[Math.floor(Math.random() * choices.length)]);
+}
 function fillCard(c) {
   const q = getQ(c.qid); if (!q) return;
   const el = c.el, tx = el.querySelector(".q-text");
@@ -288,7 +295,8 @@ function makeCard(qid) {
   const el = document.createElement("section");
   el.className = "card";
   el.innerHTML = '<div class="scrim"></div><figure class="q"><blockquote class="q-text"></blockquote><figcaption class="q-meta"><span class="q-author"></span><span class="q-no"></span></figcaption></figure>';
-  const c = { el, qid, painted: false };
+  const c = { el, qid, painted: false, font: pickFont() };
+  el.dataset.font = c.font;
   assignBg(c); fillCard(c);
   return c;
 }
@@ -453,10 +461,103 @@ function toggleFav(q, force) {
 }
 const quoteText = q => `“${q.t}”${q.a ? "\n— " + q.a : ""}`;
 $("#btnFav").onclick = () => { const q = curQuote(); if (q && !isFav(q)) burst(); toggleFav(q); };
-$("#btnShare").onclick = async () => {
-  const q = curQuote(); if (!q) return;
-  if (navigator.share) { try { await navigator.share({ text: quoteText(q) }); } catch {} return; }
-  copyText(quoteText(q));
+$("#btnShare").onclick = () => { const c = cards[current]; if (c && c.qid) sharePicture(c); };
+
+/* ============ the quote as a picture ============ */
+function loadImage(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+async function photoForCanvas(src) {
+  if (src.startsWith("blob:")) return loadImage(src);
+  // online photos need a CORS copy to be drawn into a picture
+  const r = await fetch(src, { mode: "cors" }); if (!r.ok) throw new Error("photo");
+  const url = URL.createObjectURL(await r.blob());
+  try { return await loadImage(url); } finally { setTimeout(() => URL.revokeObjectURL(url), 5000); }
+}
+function drawCover(x, img, W, H) {
+  const k = Math.max(W / img.naturalWidth, H / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
+  x.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+}
+// split the on-screen text into its actual lines, so the picture breaks lines exactly like the screen
+function screenLines(el) {
+  const node = el.firstChild; if (!node || node.nodeType !== 3) return [];
+  const text = node.textContent, lines = [], range = document.createRange();
+  let line = null;
+  for (const m of text.matchAll(/\S+/g)) {
+    range.setStart(node, m.index); range.setEnd(node, m.index + m[0].length);
+    const r = range.getClientRects()[0]; if (!r) continue;
+    if (!line || Math.abs(r.top - line.top) > r.height * .5) { line = { words: [], top: r.top, bottom: r.bottom, left: r.left, right: r.right }; lines.push(line); }
+    line.words.push(m[0]); line.right = Math.max(line.right, r.right); line.left = Math.min(line.left, r.left); line.bottom = Math.max(line.bottom, r.bottom);
+  }
+  return lines.map(l => ({ text: l.words.join(" "), mid: (l.top + l.bottom) / 2, center: (l.left + l.right) / 2 }));
+}
+async function renderPicture(c) {
+  const box = c.el.getBoundingClientRect();
+  const W = 1080, k = W / box.width, H = Math.round(box.height * k);
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const x = cv.getContext("2d");
+  // background: the same photo, or the same painted scene redrawn at full size from its seed
+  let done = false;
+  if (c.bgEl && c.bgEl.tagName === "IMG") { try { drawCover(x, await photoForCanvas(c.bgEl.src), W, H); done = true; } catch {} }
+  if (!done) paint(cv, c.seed, c.scene || chooseScene(rng(c.seed), ""));
+  // the same darkening as on screen
+  const scrim = parseFloat(getComputedStyle(c.el).getPropertyValue("--scrim")) || .34;
+  x.save(); x.translate(W * .5, H * .46); x.scale((1.2 * W) / (.7 * H), 1);
+  const rg = x.createRadialGradient(0, 0, 0, 0, 0, .7 * H);
+  rg.addColorStop(0, `rgba(0,0,0,${scrim})`); rg.addColorStop(.55, `rgba(0,0,0,${scrim * .55})`); rg.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = rg; x.fillRect(-W, -H, W * 4, H * 2); x.restore();
+  const lg = x.createLinearGradient(0, 0, 0, H);
+  lg.addColorStop(0, "rgba(0,0,0,.28)"); lg.addColorStop(.22, "rgba(0,0,0,0)"); lg.addColorStop(.72, "rgba(0,0,0,0)"); lg.addColorStop(1, "rgba(0,0,0,.38)");
+  x.fillStyle = lg; x.fillRect(0, 0, W, H);
+  // the quote, in the same lettering and line breaks as the screen
+  const tx = c.el.querySelector(".q-text"), ts = getComputedStyle(tx);
+  const font = `${ts.fontStyle} ${ts.fontWeight} ${parseFloat(ts.fontSize) * k}px ${ts.fontFamily}`;
+  try { await document.fonts.load(font); } catch {}
+  x.font = font; x.fillStyle = "#f7f2ea"; x.textAlign = "center"; x.textBaseline = "middle";
+  x.shadowColor = "rgba(0,0,0,.4)"; x.shadowBlur = 18 * k; x.shadowOffsetY = 2 * k;
+  for (const l of screenLines(tx)) x.fillText(l.text, (l.center - box.left) * k, (l.mid - box.top) * k);
+  // the author, with the short rules either side
+  const au = c.el.querySelector(".q-author");
+  if (!au.hidden && au.textContent) {
+    const as = getComputedStyle(au), r = au.getBoundingClientRect(), size = parseFloat(as.fontSize) * k;
+    x.font = `600 ${size}px ${as.fontFamily}`;
+    try { x.letterSpacing = `${size * .16}px`; } catch {}
+    const label = au.textContent.toUpperCase(), cy = (r.top + r.height / 2 - box.top) * k, cx = (r.left + r.width / 2 - box.left) * k;
+    x.fillText(label, cx, cy);
+    const tw = x.measureText(label).width, gap = 12 * k, rule = 18 * k;
+    x.shadowBlur = 0; x.shadowOffsetY = 0;
+    x.fillStyle = "rgba(247,242,234,.68)";
+    x.fillRect(cx - tw / 2 - gap - rule, cy - k / 2, rule, Math.max(1, k));
+    x.fillRect(cx + tw / 2 + gap - size * .16, cy - k / 2, rule, Math.max(1, k));
+  }
+  return new Promise(res => cv.toBlob(res, "image/jpeg", .92));
+}
+let shotFile = null, shotUrl = "";
+async function shareFile(file) {
+  if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return true; }
+  return false;
+}
+async function sharePicture(c) {
+  const btn = $("#btnShare"); if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const blob = await renderPicture(c);
+    const q = getQ(c.qid);
+    const name = "kept-words-" + (q ? norm(q.t).split(" ").slice(0, 5).join("-") : "quote") + ".jpg";
+    shotFile = new File([blob], name, { type: "image/jpeg" });
+    if (shotUrl) URL.revokeObjectURL(shotUrl);
+    shotUrl = URL.createObjectURL(blob);
+    try { if (await shareFile(shotFile)) return; }
+    catch (e) { if (e && e.name === "AbortError") return; }  // the share sheet was closed
+    // the phone wouldn't open the share sheet straight away (or can't share files): show the picture instead
+    $("#shotImg").src = shotUrl; openSheet($("#sheetShot"));
+  } catch (e) { console.warn("picture", e); toast("Couldn't make the picture. Try again."); }
+  finally { btn.disabled = false; }
+}
+$("#shotShare").onclick = async () => {
+  if (!shotFile) return;
+  try { if (!(await shareFile(shotFile))) toast("Press and hold the picture to save it."); }
+  catch (e) { if (!e || e.name !== "AbortError") toast("Press and hold the picture to save it."); }
 };
 $("#btnMore").onclick = () => { const q = curQuote(); if (q && !q.ex) openQuote(q); };
 $("#btnAdd").onclick = () => openAdd();
@@ -672,7 +773,6 @@ $("#srcSave").onclick = () => { if (connect($("#f-src").value)) { $("details").o
 function syncSettings() {
   $$("[data-bg]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.bg === S.bg)));
   $$("[data-font]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.font === S.font)));
-  document.body.dataset.font = S.font;
   $("#f-online").checked = S.online;
   const np = S.photos.length;
   const src = [np ? `your ${fmt(np)} photo${np === 1 ? "" : "s"}` : "", S.online ? "online nature photos" : ""].filter(Boolean).join(" and ");
@@ -690,7 +790,11 @@ function syncSettings() {
 function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid) { releaseBg(c); assignBg(c); } }); schedule(); }
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });
 $("#f-online").onchange = e => { S.online = e.target.checked; store.set("online", S.online); syncSettings(); rebg(); };
-$$("[data-font]").forEach(b => b.onclick = () => { S.font = b.dataset.font; store.set("font", S.font); syncSettings(); });
+$$("[data-font]").forEach(b => b.onclick = () => {
+  S.font = b.dataset.font; store.set("font", S.font); syncSettings();
+  // a fixed style applies everywhere; Random re-picks every quote except the one on screen
+  cards.forEach((c, i) => { if (c.qid && (S.font !== "random" || i !== current)) { c.font = pickFont(); c.el.dataset.font = c.font; } });
+});
 $("#unhideAll").onclick = () => { S.hidden.clear(); saveHidden(); syncSettings(); resetFeed(); toast("All quotes are back in your feed"); };
 
 function renderPhotos() {
@@ -733,7 +837,6 @@ async function uploadPhotos(files) {
 }
 
 /* ============ boot ============ */
-document.body.dataset.font = S.font;
 $("#modeAll").setAttribute("aria-pressed", String(S.mode === "all"));
 $("#modeFav").setAttribute("aria-pressed", String(S.mode === "fav"));
 if (S.doc && S.doc.text) S.quotes = new Map(parseDocText(S.doc.text).map((p, i) => [p.k, { id: p.k, t: p.t, a: p.a, i }]));

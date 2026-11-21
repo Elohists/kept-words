@@ -49,7 +49,7 @@
     <button class="ibtn" id="btnFav" aria-label="Favorite" aria-pressed="false">
       <svg class="ic-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.7 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.2 4.3 6.6-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg>
     </button>
-    <button class="ibtn" id="btnShare" aria-label="Share quote">
+    <button class="ibtn" id="btnShare" aria-label="Share or save as a picture">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14.5V3.8M8 7.5l4-4 4 4"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1.5"/></svg>
     </button>
     <button class="ibtn" id="btnMore" aria-label="More for this quote">
@@ -101,6 +101,20 @@
     <button class="pbtn danger" id="qvHide">Hide from my feed</button>
     <p class="note">To change or delete it, edit your Google Doc. The app picks up changes the next time it opens.</p>
     <a class="pbtn" id="qvDoc" href="#" target="_blank" rel="noopener">Open my Google Doc</a>
+  </div>
+</dialog>
+
+<!-- Picture of a quote -->
+<dialog class="sheet" id="sheetShot" aria-labelledby="shotTitle">
+  <div class="sh-head">
+    <span style="width:44px"></span>
+    <h2 id="shotTitle">Picture</h2>
+    <button class="txt-btn" data-close>Done</button>
+  </div>
+  <div class="sh-body shot">
+    <img id="shotImg" alt="The quote over its background">
+    <button class="pbtn primary" id="shotShare" style="width:100%">Share or save</button>
+    <p class="note">Or press and hold the picture, then tap Save to Photos.</p>
   </div>
 </dialog>
 
@@ -173,8 +187,10 @@
       <p class="note" id="photoNote">Add pictures from your camera roll. They stay on this phone.</p>
     </div>
     <div class="field"><span>Lettering</span>
-      <div class="segctl" role="group" aria-label="Quote lettering">
-        <button data-font="serif" class="f-serif" aria-pressed="true">Classic</button>
+      <div class="segctl wrap" role="group" aria-label="Quote lettering">
+        <button data-font="random" aria-pressed="true">Random</button>
+        <button data-font="serif" class="f-serif" aria-pressed="false">Classic</button>
+        <button data-font="italic" class="f-italic" aria-pressed="false">Italic</button>
         <button data-font="sans" aria-pressed="false">Modern</button>
         <button data-font="script" class="f-script" aria-pressed="false">Handwritten</button>
       </div>
