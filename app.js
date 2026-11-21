@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.6";
+const APP_VERSION = "1.0.7";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -38,28 +38,18 @@ const ago = t => {
   const d = Math.round(h / 24); return d < 30 ? `${d} day${d === 1 ? "" : "s"} ago` : new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-/* iPhone Home Screen apps with a see-through status bar are given a page shorter than the screen,
-   which leaves a black strip at the bottom. Measure the real screen and stretch the app over the gap. */
+/* Screen measurements, shown at the bottom of Settings to help diagnose layout problems.
+   (The status bar is solid black, set in index.html: with a see-through status bar, iPhones give
+   Home Screen web apps a drawing area that stops a status bar's height short of the bottom.) */
 function standaloneMode() { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
-let boxH = 0;
-function fitScreen() {
-  let gap = 0;
-  // measure the box the app is really drawn in: a fixed element at 100% height, the same way the feed is sized
+function boxHeight() {
   const probe = document.createElement("div");
   probe.style.cssText = "position:fixed;top:0;left:0;width:1px;height:100%;visibility:hidden;pointer-events:none";
   document.documentElement.appendChild(probe);
-  boxH = Math.round(probe.getBoundingClientRect().height);
+  const h = Math.round(probe.getBoundingClientRect().height);
   probe.remove();
-  if (standaloneMode() && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
-    const portrait = window.matchMedia("(orientation: portrait)").matches;
-    const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
-    gap = Math.max(0, Math.min(140, full - Math.min(boxH, window.innerHeight)));
-  }
-  document.documentElement.style.setProperty("--gap", gap + "px");
+  return h;
 }
-fitScreen();
-window.addEventListener("resize", fitScreen);
-window.addEventListener("orientationchange", () => setTimeout(fitScreen, 300));
 
 /* film grain tile */
 (function makeGrain() {
@@ -694,9 +684,8 @@ function syncSettings() {
   $("#hiddenNote").textContent = `${fmt(hidden)} quote${hidden === 1 ? " is" : "s are"} hidden from your feed on this phone.`;
   const favs = [...S.quotes.values()].filter(isFav).length, au = new Set([...S.quotes.values()].map(q => q.a).filter(Boolean)).size;
   $("#setStats").textContent = S.quotes.size ? `${fmt(S.quotes.size)} quotes from ${fmt(au)} people · ${fmt(favs)} favorites` : "";
-  const gap = getComputedStyle(document.documentElement).getPropertyValue("--gap").trim() || "0px";
   // screen measurements help when something doesn't fill the screen
-  $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxH} · gap ${gap}${standaloneMode() ? " · home screen" : ""}`;
+  $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxHeight()}${standaloneMode() ? " · home screen" : ""}`;
 }
 function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid) { releaseBg(c); assignBg(c); } }); schedule(); }
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });
