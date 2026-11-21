@@ -67,14 +67,29 @@ function doPost(e) {
     }
     const idx = first >= 0 ? body_.getChildIndex(paras[first]) : body_.getNumChildren();
     const quoteLine = '\u201C' + t.replace(/^["\u201C\u201D]+|["\u201C\u201D]+$/g, '') + '\u201D';
-    const lines = a ? [quoteLine, '- ' + a, '', ''] : [quoteLine, '', ''];
-    // copy the look (font, size) of the quote and author lines already in the doc
-    const looks = first >= 0 ? [paras[first], paras[first + 1] || paras[first]] : [];
-    lines.forEach((line, i) => {
-      const p = body_.insertParagraph(idx + i, line);
-      const like = looks[Math.min(i, 1)];
-      try { if (like) p.setAttributes(like.getAttributes()); else p.setHeading(DocumentApp.ParagraphHeading.NORMAL); } catch (e) {}
-    });
+
+    // Use the quote now at the top as the pattern: its quote line, its "- Author" line and
+    // exactly the blank lines under it, so a new quote has the same look and spacing as the rest.
+    const isPara = p => p && p.getType() === DocumentApp.ElementType.PARAGRAPH;
+    let quoteLook = null, authorLook = null;
+    const blanks = [];
+    if (first >= 0) {
+      quoteLook = paras[first];
+      let i = first + 1;
+      if (i < paras.length && /^\s*[-\u2013\u2014]/.test(paras[i].getText())) { authorLook = paras[i]; i++; }
+      while (i < paras.length && paras[i].getText().trim() === '' && !CUTOFF.test(paras[i].getText())) { blanks.push(paras[i]); i++; }
+    }
+    const make = (look, text) => {
+      if (isPara(look)) { const p = look.copy(); p.setText(text); return p; }
+      const p = body_.insertParagraph(0, text); p.removeFromParent();
+      p.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+      return p;
+    };
+    const out = [make(quoteLook, quoteLine)];
+    if (a) out.push(make(authorLook || quoteLook, '- ' + a));
+    if (blanks.length) blanks.forEach(b => out.push(isPara(b) ? b.copy() : make(null, '')));
+    else out.push(make(null, ''));
+    out.forEach((p, i) => body_.insertParagraph(idx + i, p));
     return reply_(quotesFrom_(doc));
   } catch (err) {
     return reply_({ ok: false, error: String(err.message || err) });

@@ -1,6 +1,6 @@
 /* Kept Words — service worker: makes the app open with no internet.
    Bump VERSION whenever any app file changes so phones pick up the new files. */
-const VERSION = "kw-1.0.8";
+const VERSION = "kw-1.0.9";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "painter.js", "docparse.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 const RUNTIME = "kw-runtime";

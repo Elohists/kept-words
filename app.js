@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.0.8";
+const APP_VERSION = "1.0.9";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -169,7 +169,7 @@ function applyQuotes(parsed) {
   const wasEmpty = S.quotes.size === 0;
   const before = new Set(S.quotes.keys());
   S.quotes = new Map(parsed.map((p, i) => [p.k, { id: p.k, t: p.t, a: p.a, i }]));
-  updateCount(); refreshAuthors(); saveForNotifications();
+  updateCount(); saveForNotifications();
   if (wasEmpty || S.quotes.size === 0 || (openFirst && S.quotes.has(openFirst))) { resetFeed(); return; }
   const added = [...S.quotes.keys()].filter(k => !before.has(k));
   const gone = new Set([...before].filter(k => !S.quotes.has(k)));
@@ -197,11 +197,6 @@ function saveForNotifications() {
       await c.put("quotes.json", new Response(JSON.stringify(list), { headers: { "Content-Type": "application/json" } }));
     } catch (e) { console.warn("save quotes", e); }
   }, 800);
-}
-function refreshAuthors() {
-  const m = new Map(); for (const q of S.quotes.values()) if (q.a) m.set(q.a, (m.get(q.a) || 0) + 1);
-  const dl = $("#authorList"); dl.innerHTML = "";
-  for (const [a] of [...m.entries()].sort((x, y) => y[1] - x[1]).slice(0, 300)) { const o = document.createElement("option"); o.value = a; dl.appendChild(o); }
 }
 
 /* ============ your photos (IndexedDB, on this device) ============ */
@@ -841,7 +836,7 @@ $("#modeAll").setAttribute("aria-pressed", String(S.mode === "all"));
 $("#modeFav").setAttribute("aria-pressed", String(S.mode === "fav"));
 if (S.doc && S.doc.text) S.quotes = new Map(parseDocText(S.doc.text).map((p, i) => [p.k, { id: p.k, t: p.t, a: p.a, i }]));
 takeHashQuote();
-refreshAuthors(); updateCount(); resetFeed();
+updateCount(); resetFeed();
 // photos load after the first screens are built, so give those screens a fresh pick once they're in
 loadPhotos().then(() => {
   if (!S.photos.length) return;
