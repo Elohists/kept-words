@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kept Words</title>
+<meta name="description" content="A swipeable feed of the quotes you keep.">
+<meta name="theme-color" content="#0b0c10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kept Words">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&family=Instrument+Sans:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<main id="feed" class="feed" aria-label="Quote feed"></main>
+
+<header class="topbar">
+  <div class="pill">
+    <button class="ibtn" id="btnLibrary" aria-label="Open your library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 4.5h3.2v15H5zM10.4 4.5h3.2v15h-3.2zM16 5.2l3-.7 2.9 14.4-3 .7z"/></svg>
+      <span id="countLabel">…</span>
+    </button>
+  </div>
+  <div class="pill seg" role="group" aria-label="Which quotes to show">
+    <button class="ibtn" id="modeAll" aria-pressed="true">All</button>
+    <button class="ibtn" id="modeFav" aria-pressed="false">
+      <svg class="ic-heart" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:15px;height:15px"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.7 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.2 4.3 6.6-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg>
+      Favorites
+    </button>
+  </div>
+  <div class="pill">
+    <button class="ibtn" id="btnSettings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="dock" id="dock">
+  <div class="spacer" aria-hidden="true"></div>
+  <div class="pill acts">
+    <button class="ibtn" id="btnFav" aria-label="Favorite" aria-pressed="false">
+      <svg class="ic-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.7 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.2 4.3 6.6-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg>
+    </button>
+    <button class="ibtn" id="btnShare" aria-label="Share quote">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14.5V3.8M8 7.5l4-4 4 4"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1.5"/></svg>
+    </button>
+    <button class="ibtn" id="btnMore" aria-label="More for this quote">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg>
+    </button>
+  </div>
+  <button class="ibtn fab" id="btnAdd" aria-label="Add a quote">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+</div>
+
+<div class="burst" id="burst"><svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.7 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.2 4.3 6.6-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Add a quote (written into the Google Doc) -->
+<dialog class="sheet" id="sheetAdd" aria-labelledby="addTitle">
+  <div class="sh-head">
+    <button class="txt-btn" data-close>Cancel</button>
+    <h2 id="addTitle">New quote</h2>
+    <button class="txt-btn" id="addSave" style="color:var(--paper)">Save</button>
+  </div>
+  <form class="sh-body" id="addForm" autocomplete="off">
+    <label class="field"><span>Quote</span>
+      <textarea id="f-text" class="big" rows="4" placeholder="Write it down while it still rings…" required></textarea>
+    </label>
+    <label class="field"><span>Who said it</span>
+      <input type="text" id="f-author" list="authorList" placeholder="Name, or leave blank" autocapitalize="words">
+      <datalist id="authorList"></datalist>
+    </label>
+    <button type="submit" class="pbtn primary" id="addSubmit">Save to my Google Doc</button>
+    <p class="note">It's added to the end of your quotes in the doc, above the longer quotes and letters.</p>
+  </form>
+</dialog>
+
+<!-- One quote -->
+<dialog class="sheet" id="sheetQuote" aria-labelledby="quoteTitle">
+  <div class="sh-head">
+    <span style="width:44px"></span>
+    <h2 id="quoteTitle">This quote</h2>
+    <button class="txt-btn" data-close>Done</button>
+  </div>
+  <div class="sh-body">
+    <p class="quote-view" id="qvText"></p>
+    <div class="a" id="qvAuthor"></div>
+    <div class="actions-row">
+      <button class="pbtn grow" id="qvFav">Favorite</button>
+      <button class="pbtn grow" id="qvCopy">Copy</button>
+    </div>
+    <button class="pbtn danger" id="qvHide">Hide from my feed</button>
+    <p class="note">To change or delete it, edit your Google Doc. The app picks up changes the next time it opens.</p>
+    <a class="pbtn" id="qvDoc" href="#" target="_blank" rel="noopener">Open my Google Doc</a>
+  </div>
+</dialog>
+
+<!-- Library -->
+<dialog class="sheet" id="sheetLibrary" aria-labelledby="libTitle">
+  <div class="sh-head">
+    <span style="width:44px"></span>
+    <h2 id="libTitle">Library</h2>
+    <button class="txt-btn" data-close>Done</button>
+  </div>
+  <div class="sh-body" id="libBody">
+    <div class="lib-tools">
+      <label class="field"><span class="label" id="libCount">Your quotes</span>
+        <input type="search" id="f-search" placeholder="Search words or names" autocomplete="off">
+      </label>
+      <div class="segctl" role="group" aria-label="Library filter">
+        <button id="libAll" aria-pressed="true">All</button>
+        <button id="libFav" aria-pressed="false">Favorites</button>
+        <button id="libNoAuthor" aria-pressed="false">No author</button>
+      </div>
+    </div>
+    <div class="lib-list" id="libList"></div>
+    <button class="pbtn" id="libMore" hidden>Show more</button>
+  </div>
+</dialog>
+
+<!-- Settings -->
+<dialog class="sheet" id="sheetSettings" aria-labelledby="setTitle">
+  <div class="sh-head">
+    <span style="width:44px"></span>
+    <h2 id="setTitle">Settings</h2>
+    <button class="txt-btn" data-close>Done</button>
+  </div>
+  <div class="sh-body">
+    <div class="field"><span>Google Doc</span>
+      <p class="note" id="syncNote"></p>
+      <div class="actions-row">
+        <button class="pbtn primary grow" id="syncNow">Refresh now</button>
+        <a class="pbtn grow" id="openDoc" href="#" target="_blank" rel="noopener">Open doc</a>
+      </div>
+      <details>
+        <summary class="note" style="cursor:pointer">Change the connection link</summary>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+          <input type="url" id="f-src" class="doclink" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false" aria-label="Connection link">
+          <button class="pbtn" id="srcSave">Save link</button>
+        </div>
+      </details>
+    </div>
+    <div class="field"><span>Notifications</span>
+      <p class="note" id="notifNote"></p>
+      <button class="pbtn primary" id="notifToggle">Turn on hourly quotes</button>
+      <div class="actions-row" id="quietRow">
+        <span class="note">Quiet from</span>
+        <select id="f-quietFrom" class="hoursel" aria-label="Quiet hours start"></select>
+        <span class="note">to</span>
+        <select id="f-quietTo" class="hoursel" aria-label="Quiet hours end"></select>
+      </div>
+    </div>
+    <div class="field"><span>Backgrounds</span>
+      <div class="segctl" role="group" aria-label="Background source">
+        <button data-bg="painted" aria-pressed="true">Painted</button>
+        <button data-bg="mix" aria-pressed="false">Mix</button>
+        <button data-bg="photos" aria-pressed="false">Photos</button>
+      </div>
+      <label class="check"><input type="checkbox" id="f-online"> Include online nature photos</label>
+      <p class="note" id="bgNote"></p>
+    </div>
+    <div class="field"><span>Your photos</span>
+      <div class="photos" id="photoGrid"></div>
+      <p class="note" id="photoNote">Add pictures from your camera roll. They stay on this phone.</p>
+    </div>
+    <div class="field"><span>Lettering</span>
+      <div class="segctl" role="group" aria-label="Quote lettering">
+        <button data-font="serif" class="f-serif" aria-pressed="true">Classic</button>
+        <button data-font="sans" aria-pressed="false">Modern</button>
+        <button data-font="script" class="f-script" aria-pressed="false">Handwritten</button>
+      </div>
+    </div>
+    <div class="field" id="hiddenField" hidden><span>Hidden quotes</span>
+      <p class="note" id="hiddenNote"></p>
+      <button class="pbtn" id="unhideAll">Show them all again</button>
+    </div>
+    <p class="note" id="setStats"></p>
+    <p class="version" id="version"></p>
+  </div>
+</dialog>
+
+<script src="docparse.js"></script>
+<script src="painter.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
