@@ -12,6 +12,7 @@ const clean = v => String(v || "").replace(/[\s"'\u201C\u201D]/g, "");
 const SCRIPT_URL = clean(process.env.SCRIPT_URL);
 const PRIVATE = clean(process.env.VAPID_PRIVATE_KEY).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 const SUBJECT = process.env.VAPID_SUBJECT || "https://github.com";
+const IGNORE_QUIET = process.env.IGNORE_QUIET === "true";
 const PUBLIC = (fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8").match(/VAPID_PUBLIC = "([^"]+)"/) || [])[1];
 
 function quietNow(tz, quiet) {
@@ -39,8 +40,10 @@ async function getJson(url, opts) {
   webpush.setVapidDetails(SUBJECT, PUBLIC, PRIVATE);
   const s = await getJson(SCRIPT_URL + (SCRIPT_URL.includes("?") ? "&" : "?") + "action=subs");
   if (!s.ok) throw new Error("Script error: " + s.error);
-  const due = (s.subs || []).filter(x => !quietNow(x.tz, x.quiet));
-  console.log(`${(s.subs || []).length} phone(s) signed up, ${due.length} outside quiet hours.`);
+  const due = (s.subs || []).filter(x => IGNORE_QUIET || !quietNow(x.tz, x.quiet));
+  console.log(IGNORE_QUIET
+    ? `${(s.subs || []).length} phone(s) signed up; a test run sends to all of them, even in quiet hours.`
+    : `${(s.subs || []).length} phone(s) signed up, ${due.length} outside quiet hours.`);
   if (!due.length) return;
 
   const d = await getJson(SCRIPT_URL);
