@@ -1,6 +1,6 @@
 /* Words of Life — service worker: makes the app open with no internet.
    Bump VERSION whenever any app file changes so phones pick up the new files. */
-const VERSION = "kw-1.2.4";
+const VERSION = "kw-1.2.5";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "painter.js", "docparse.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 const RUNTIME = "kw-runtime";
@@ -70,9 +70,10 @@ self.addEventListener("push", e => {
     let sent = null;
     try { sent = e.data ? e.data.json() : null; } catch {}
     const q = (await pickSaved()) || sent || { t: "Open Words of Life for a quote.", a: "", k: "" };
-    // the quote is the title; the author, if any, sits underneath
-    await self.registration.showNotification(q.t, {
-      body: q.a ? "— " + q.a : "",
+    // iPhones cut a notification's title to one line but show several lines of body (all of it when
+    // pressed and held), so the quote goes in the body with the author underneath, and the title stays empty
+    await self.registration.showNotification("", {
+      body: q.t + (q.a ? "\n— " + q.a : ""),
       icon: "icons/icon-192.png",
       badge: "icons/icon-192.png",
       tag: "kept-words-hourly",
