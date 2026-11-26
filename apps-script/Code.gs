@@ -8,19 +8,41 @@
  *
  * Only the quotes section leaves Google. Everything from the heading
  * "Longer Quotes and Father's Handwritten Notes and Letters" down is cut off here.
+ *
+ * Sermons: put your sermons doc's ID in SERMONS_DOC_ID below (the long part of its link
+ * between /d/ and /edit), run testSermons once to approve access, then deploy a new version.
  */
 
 // Leave empty when this script is opened from the doc itself (Extensions → Apps Script).
 // Only a standalone script needs the doc's ID (the long part of its link between /d/ and /edit).
 const DOC_ID = '';
 const CUTOFF = /^\s*longer quotes and father.?s handwritten notes/i;
+// Paste your sermons doc's ID between the quotes. It stays in your Apps Script, never in the app's code.
+const SERMONS_DOC_ID = '';
 
 function doGet(e) {
   try {
     // the hourly notification job asks for the phones that turned notifications on
     if (e && e.parameter && e.parameter.action === 'subs') return reply_({ ok: true, subs: subs_() });
+    if (e && e.parameter && e.parameter.doc === 'sermons') return reply_(sermons_(e.parameter.have || ''));
     return reply_(readQuotes_());
   } catch (err) { return reply_({ ok: false, error: String(err.message || err) }); }
+}
+
+/* ---- sermons: the whole doc, unless the phone already has this exact version ---- */
+function sermons_(have) {
+  if (!SERMONS_DOC_ID) return { ok: false, error: 'no sermons doc connected' };
+  const doc = DocumentApp.openById(SERMONS_DOC_ID);
+  const text = doc.getBody().getText();
+  const hash = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, text, Utilities.Charset.UTF_8));
+  if (have && have === hash) return { ok: true, unchanged: true, hash: hash };
+  return { ok: true, hash: hash, name: doc.getName(), url: doc.getUrl(), text: text };
+}
+
+/** Run this once from the editor (select it and press Run) to approve reading the sermons doc. */
+function testSermons() {
+  const r = sermons_('');
+  Logger.log(r.ok ? r.name + ': ' + r.text.length + ' characters of sermons' : r.error);
 }
 
 /* ---- phones that turned on hourly quotes (stored in this script's properties) ---- */

@@ -29,3 +29,11 @@ If you edit the script later: **Deploy → Manage deployments → ✏️ → Ver
 1. In the repository's **Settings → Secrets and variables → Actions**, add two secrets: `SCRIPT_URL` (the connection link) and `VAPID_PRIVATE_KEY` (the notification key).
 2. In the app: **Settings → Notifications → Turn on hourly quotes**, and allow notifications. Set quiet hours if you like.
 3. To test it, go to the repository's **Actions** tab → **Hourly quote** → **Run workflow**.
+
+### 4. Sermons (a second doc, behind a PIN)
+1. In Apps Script, paste the latest `apps-script/Code.gs`, then put your sermons doc's ID between the quotes in `const SERMONS_DOC_ID = '';` (the ID is the long part of the doc's link between `/d/` and `/edit`). Press **Save**.
+2. Choose **testSermons** in the function menu and press **Run**. Google asks again for access, because the script now reads a second doc: **Advanced → Go to … (unsafe) → Allow**.
+3. **Deploy → Manage deployments → ✏️ → Version: New version → Deploy.** The link stays the same.
+4. In the app, tap **Sermons** and choose a 4-digit PIN. Sermons lock again whenever you leave the app. Forgot the PIN? Tap **Forgot your PIN?** and paste your connection link to choose a new one.
+
+The PIN keeps Sermons private inside the app on that phone. It isn't encryption: anyone who has your connection link can still read the sermons doc through the script.

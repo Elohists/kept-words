@@ -1,11 +1,12 @@
 /* Kept Words — app logic.
-   Quotes come from the owner's Google Doc through a private Apps Script web app (see apps-script/Code.gs).
+   Quotes (and sermons, from a second doc) come from the owner's Google Docs through a private
+   Apps Script web app (see apps-script/Code.gs). Sermons open with a PIN kept on the device.
    The connection link is kept only on the device (localStorage), never in this code.
    Favorites, hidden quotes, settings and your own photos also stay on the device. */
 (() => {
 "use strict";
 
-const APP_VERSION = "1.1.1";
+const APP_VERSION = "1.2.0";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -106,7 +107,11 @@ const S = {
   favs: new Set(store.get("favs", [])), // keys
   hidden: new Set(store.get("hidden", [])),
   photos: [],                           // [{id, url}] from IndexedDB
-  mode: store.get("mode", "all"),
+  mode: ({ all: "quotes" })[store.get("mode", "quotes")] || store.get("mode", "quotes"),
+  sermons: new Map(),                   // key -> {id, s: true, title, topic, lines, i}
+  sdoc: null,                           // last sermons doc answer, kept in IndexedDB: {key, text, hash, name, url, at}
+  sloading: false, serror: "", snone: false,
+  unlocked: false,                      // Sermons open until the app goes to the background
   bg: store.get("bg", "painted"),
   font: store.get("font", "random"),
   online: store.get("online", true),
@@ -118,10 +123,10 @@ const isFav = q => !!q && S.favs.has(q.id);
 
 /* ============ Google Doc connection ============ */
 const validSrc = v => /^https:\/\/script\.google(usercontent)?\.com\/.+/.test(String(v || "").trim());
-async function callScript(opts = {}) {
-  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 30000);
+async function callScript(opts = {}, url = S.src) {
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 45000);
   try {
-    const res = await fetch(S.src, { ...opts, signal: ctl.signal, cache: "no-store", redirect: "follow" });
+    const res = await fetch(url, { ...opts, signal: ctl.signal, cache: "no-store", redirect: "follow" });
     const body = await res.text();
     let j; try { j = JSON.parse(body); } catch { throw { code: /<html/i.test(body) ? "access" : "bad" }; }
     if (!j.ok) throw { code: "script", message: j.error || "" };
@@ -198,9 +203,14 @@ function applyQuotes(parsed) {
   const before = new Set(S.quotes.keys());
   S.quotes = new Map(parsed.map((p, i) => [p.k, { id: p.k, t: p.t, a: p.a, i }]));
   updateCount(); saveForNotifications();
-  if (wasEmpty || S.quotes.size === 0 || (openFirst && S.quotes.has(openFirst))) { resetFeed(); return; }
-  const added = [...S.quotes.keys()].filter(k => !before.has(k));
-  const gone = new Set([...before].filter(k => !S.quotes.has(k)));
+  const showing = S.mode !== "sermons";
+  if (showing && (wasEmpty || S.quotes.size === 0 || (openFirst && S.quotes.has(openFirst)))) { resetFeed(); return; }
+  mergeIntoFeed(before, S.quotes);
+}
+/* new and removed items slot into the running feed without starting it over */
+function mergeIntoFeed(before, now) {
+  const added = [...now.keys()].filter(k => !before.has(k));
+  const gone = new Set([...before].filter(k => !now.has(k)));
   const pool = new Set(realPool().map(q => q.id));
   deck = deck.filter(id => pool.has(id));
   for (const id of added) if (pool.has(id)) deck.splice(Math.floor(Math.random() * (deck.length + 1)), 0, id);
@@ -231,15 +241,22 @@ function saveForNotifications() {
 const idb = (() => {
   let dbp;
   const open = () => dbp || (dbp = new Promise((res, rej) => {
-    const r = indexedDB.open("keptwords", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("photos", { keyPath: "id" });
+    const r = indexedDB.open("keptwords", 2);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains("photos")) db.createObjectStore("photos", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("docs")) db.createObjectStore("docs", { keyPath: "key" });
+    };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   }));
-  const run = async (mode, fn) => {
+  const run = async (mode, fn, store = "photos") => {
     const db = await open();
-    return new Promise((res, rej) => { const t = db.transaction("photos", mode); const req = fn(t.objectStore("photos")); t.oncomplete = () => res(req && req.result); t.onerror = () => rej(t.error); });
+    return new Promise((res, rej) => { const t = db.transaction(store, mode); const req = fn(t.objectStore(store)); t.oncomplete = () => res(req && req.result); t.onerror = () => rej(t.error); });
   };
-  return { all: () => run("readonly", s => s.getAll()), put: o => run("readwrite", s => s.put(o)), del: id => run("readwrite", s => s.delete(id)) };
+  return {
+    all: () => run("readonly", s => s.getAll()), put: o => run("readwrite", s => s.put(o)), del: id => run("readwrite", s => s.delete(id)),
+    getDoc: key => run("readonly", s => s.get(key), "docs"), putDoc: o => run("readwrite", s => s.put(o), "docs"),
+  };
 })();
 async function loadPhotos() {
   try {
@@ -254,11 +271,14 @@ const feed = $("#feed");
 let cards = [], deck = [], current = 0, lastScene = "", lastPhoto = "";
 
 function realPool() {
-  const all = [...S.quotes.values()].filter(q => !S.hidden.has(q.id));
-  return S.mode === "fav" ? all.filter(isFav) : all;
+  const visible = m => [...m.values()].filter(q => !S.hidden.has(q.id));
+  if (S.mode === "sermons") return S.unlocked ? visible(S.sermons) : [];
+  if (S.mode !== "fav") return visible(S.quotes);
+  // one Favorites tab for both; favorite sermons only while Sermons is unlocked
+  return visible(S.quotes).concat(S.unlocked ? visible(S.sermons) : []).filter(isFav);
 }
-const exampleMode = () => S.quotes.size === 0;
-const getQ = id => S.quotes.get(id) || EXAMPLES.find(e => e.id === id);
+const exampleMode = () => S.mode !== "sermons" && S.quotes.size === 0;
+const getQ = id => S.quotes.get(id) || S.sermons.get(id) || EXAMPLES.find(e => e.id === id);
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function drawId() {
   if (!deck.length) {
@@ -307,17 +327,57 @@ function pickFont() {
   const choices = FONTS.filter(f => f !== lastFont);
   return (lastFont = choices[Math.floor(Math.random() * choices.length)]);
 }
+const QUOTE_HTML = '<figure class="q"><blockquote class="q-text"></blockquote><figcaption class="q-meta"><span class="q-author"></span><span class="q-no"></span></figcaption></figure>';
+const SERMON_HTML = '<article class="s"><div class="s-topic"></div><h2 class="s-title"></h2><div class="s-body"></div></article>';
+// topic headings from the doc, shown above the title; the generic "Additional Notes" isn't shown
+const topicLabel = t => String(t || "").replace(/^Additional Notes:?\s*/i, "");
 function fillCard(c) {
   const q = getQ(c.qid); if (!q) return;
-  const el = c.el, tx = el.querySelector(".q-text");
+  const el = c.el, type = q.s ? "sermon" : "quote";
+  if (c.type !== type) {
+    el.querySelectorAll(".q, .s").forEach(n => n.remove());
+    el.classList.toggle("sermon", type === "sermon");
+    el.insertAdjacentHTML("beforeend", type === "sermon" ? SERMON_HTML : QUOTE_HTML);
+    c.type = type;
+  }
+  if (q.s) { fillSermon(c, q); return; }
+  const tx = el.querySelector(".q-text");
   tx.textContent = q.t; tx.style.setProperty("--fs", fontSize(q.t) + "px");
   const au = el.querySelector(".q-author"); au.textContent = q.a || ""; au.hidden = !q.a;
   el.querySelector(".q-no").innerHTML = q.ex ? '<span class="tag">Example</span>' : "";
 }
+function fillSermon(c, q) {
+  const el = c.el;
+  const topic = topicLabel(q.topic), tp = el.querySelector(".s-topic");
+  tp.textContent = topic; tp.hidden = !topic;
+  el.querySelector(".s-title").textContent = q.title;
+  const body = el.querySelector(".s-body"); body.textContent = "";
+  for (const l of q.lines) {
+    const p = document.createElement("p"); p.className = "s-line";
+    if (l.r) { const r = document.createElement("span"); r.className = "ref"; r.textContent = l.r; p.appendChild(r); }
+    p.appendChild(document.createTextNode(l.t));
+    body.appendChild(p);
+  }
+  fitSermon(c);
+}
+/* size the sermon's text so the whole outline fits its panel; very long ones scroll inside the panel */
+function fitSermon(c) {
+  const art = c.el.querySelector(".s");
+  if (!art || !c.el.isConnected || !c.el.clientHeight) return;
+  const body = art.querySelector(".s-body");
+  art.classList.remove("scrolls");
+  const fits = px => { art.style.setProperty("--ss", px + "px"); return body.scrollHeight <= body.clientHeight + 1; };
+  const MAX = 17.5, MIN = 11.5;
+  if (fits(MAX)) return;
+  if (!fits(MIN)) { art.classList.add("scrolls"); fits(12.5); return; }
+  let lo = MIN, hi = MAX;
+  for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+  fits(Math.floor(lo * 4) / 4);
+}
 function makeCard(qid) {
   const el = document.createElement("section");
   el.className = "card";
-  el.innerHTML = '<div class="scrim"></div><figure class="q"><blockquote class="q-text"></blockquote><figcaption class="q-meta"><span class="q-author"></span><span class="q-no"></span></figcaption></figure>';
+  el.innerHTML = '<div class="scrim"></div>';
   const c = { el, qid, painted: false, font: pickFont() };
   el.dataset.font = c.font;
   assignBg(c); fillCard(c);
@@ -327,6 +387,7 @@ function appendCards(n) {
   for (let i = 0; i < n; i++) {
     const id = drawId(); if (!id) break;
     const c = makeCard(id); cards.push(c); feed.appendChild(c.el); io.observe(c.el);
+    if (c.type === "sermon") fitSermon(c);
   }
 }
 function introCard(kind) {
@@ -346,7 +407,14 @@ function introCard(kind) {
     fig.innerHTML = `<h1>Couldn't open your quotes</h1><p></p><div class="row"><button class="btn solid" data-act="retry">Try again</button><button class="btn" data-act="settings">Settings</button></div>`;
     fig.querySelector("p").textContent = S.error;
   } else if (kind === "nofav") {
-    fig.innerHTML = `<h1>No favorites yet</h1><p>Double-tap any quote, or tap the heart below it, to keep it here.</p><div class="row"><button class="btn solid" data-act="all">Show all quotes</button></div>`;
+    fig.innerHTML = `<h1>No favorites yet</h1><p>Double-tap any quote or sermon, or tap the heart below it, to keep it here.</p><div class="row"><button class="btn solid" data-act="all">Show all quotes</button></div>`;
+  } else if (kind === "locked") {
+    fig.innerHTML = `<h1>Sermons</h1><p>Enter your PIN to open them.</p><div class="row"><button class="btn solid" data-act="unlock">Unlock</button></div>`;
+  } else if (kind === "sloading") {
+    fig.innerHTML = "<h1>Sermons</h1><p>Opening your sermons…</p>";
+  } else if (kind === "serror") {
+    fig.innerHTML = `<h1>Couldn't open your sermons</h1><p></p><div class="row"><button class="btn solid" data-act="sretry">Try again</button></div>`;
+    fig.querySelector("p").textContent = S.serror;
   }
   el.appendChild(document.createElement("div")).className = "scrim";
   el.appendChild(fig);
@@ -369,6 +437,7 @@ function resetFeed() {
   if (openFirst && S.quotes.has(openFirst) && !S.hidden.has(openFirst)) { deck = [openFirst]; }
   let lead = null;
   if (!S.src) lead = "connect";
+  else if (S.mode === "sermons") lead = !S.unlocked ? "locked" : S.sermons.size ? null : (S.serror ? "serror" : "sloading");
   else if (!S.quotes.size) lead = S.error ? "error" : "loading";
   else if (S.mode === "fav" && !realPool().length) lead = "nofav";
   if (lead) { const c = introCard(lead); cards.push(c); feed.appendChild(c.el); io.observe(c.el); }
@@ -446,9 +515,8 @@ function updateDock() {
   $("#btnMore").disabled = !q || !!q.ex;
 }
 function updateCount() {
-  const n = S.quotes.size;
-  $("#countLabel").textContent = n ? fmt(n) : S.src && !S.error ? "…" : "0";
-  $("#btnLibrary").setAttribute("aria-label", `Open your library, ${fmt(n)} quotes`);
+  const n = S.mode === "sermons" ? S.sermons.size : S.quotes.size;
+  $("#btnLibrary").setAttribute("aria-label", `Open your library, ${fmt(n)} ${S.mode === "sermons" ? "sermons" : "quotes"}`);
 }
 
 /* ============ gestures and buttons ============ */
@@ -460,7 +528,9 @@ feed.addEventListener("click", e => {
     if (a === "connect") connect($("#f-connect").value);
     else if (a === "retry") { S.error = ""; resetFeed(); refresh(true); }
     else if (a === "settings") openSettings();
-    else if (a === "all") setMode("all");
+    else if (a === "all") setMode("quotes");
+    else if (a === "unlock") askPin(() => setMode("sermons"));
+    else if (a === "sretry") { S.serror = ""; resetFeed(); refreshSermons(true); }
     return;
   }
   if (e.target.closest("input")) return;
@@ -482,9 +552,18 @@ function toggleFav(q, force) {
   if (S.mode === "fav" && !f) deck = deck.filter(id => id !== q.id);
   toast(f ? "Added to favorites" : "Removed from favorites", 1300);
 }
-const quoteText = q => `“${q.t}”${q.a ? "\n— " + q.a : ""}`;
+const quoteText = q => q.s
+  ? [q.title, ...q.lines.map(l => (l.r ? `(${l.r}) ` : "") + l.t)].join("\n")
+  : `“${q.t}”${q.a ? "\n— " + q.a : ""}`;
 $("#btnFav").onclick = () => { const q = curQuote(); if (q && !isFav(q)) burst(); toggleFav(q); };
-$("#btnShare").onclick = () => { const c = cards[current]; if (c && c.qid) sharePicture(c); };
+$("#btnShare").onclick = async () => {
+  const c = cards[current]; if (!c || !c.qid) return;
+  const q = getQ(c.qid);
+  if (!q || !q.s) { sharePicture(c); return; }
+  // sermons are shared as text
+  if (navigator.share) { try { await navigator.share({ text: quoteText(q) }); } catch {} return; }
+  copyText(quoteText(q));
+};
 
 /* ============ the quote as a picture ============ */
 function loadImage(src) {
@@ -586,14 +665,136 @@ $("#btnMore").onclick = () => { const q = curQuote(); if (q && !q.ex) openQuote(
 $("#btnAdd").onclick = () => openAdd();
 $("#btnLibrary").onclick = () => openLibrary();
 $("#btnSettings").onclick = () => openSettings();
+function updateTabs() {
+  $("#modeQuotes").setAttribute("aria-pressed", String(S.mode === "quotes"));
+  $("#modeFav").setAttribute("aria-pressed", String(S.mode === "fav"));
+  $("#modeSermons").setAttribute("aria-pressed", String(S.mode === "sermons"));
+  document.body.classList.toggle("unlocked", S.unlocked);
+  $("#modeSermons").setAttribute("aria-label", S.unlocked ? "Sermons" : "Sermons, locked");
+}
 function setMode(m) {
   S.mode = m; store.set("mode", m);
-  $("#modeAll").setAttribute("aria-pressed", String(m === "all"));
-  $("#modeFav").setAttribute("aria-pressed", String(m === "fav"));
+  updateTabs(); updateCount();
   resetFeed();
+  if (m === "sermons" && S.unlocked && !S.sermons.size) refreshSermons(false);
 }
-$("#modeAll").onclick = () => S.mode !== "all" && setMode("all");
+$("#modeQuotes").onclick = () => S.mode !== "quotes" && setMode("quotes");
 $("#modeFav").onclick = () => S.mode !== "fav" && setMode("fav");
+$("#modeSermons").onclick = () => { if (S.mode === "sermons" && S.unlocked) return; if (S.unlocked) setMode("sermons"); else askPin(() => setMode("sermons")); };
+
+/* ============ Sermons: second doc and PIN ============ */
+function applySermons(parsed) {
+  const before = new Set(S.sermons.keys());
+  S.sermons = new Map(parsed.map((p, i) => [p.k, { id: p.k, s: true, title: p.title, topic: p.topic, lines: p.lines, i }]));
+  updateCount();
+  if (S.mode === "sermons" && (!before.size || !S.sermons.size || cards.some(c => c.intro))) { resetFeed(); return; }
+  if (S.mode === "sermons" || S.mode === "fav") mergeIntoFeed(before, S.sermons);
+}
+async function loadSermonsCache() {
+  try { const d = await idb.getDoc("sermons"); if (d && d.text) { S.sdoc = d; applySermons(parseSermonText(d.text)); } }
+  catch (e) { console.warn("sermons cache", e); }
+}
+async function refreshSermons(manual) {
+  if (!S.src || S.sloading) return;
+  S.sloading = true; renderSync();
+  try {
+    const have = (S.sdoc && S.sdoc.hash) || "";
+    const url = S.src + (S.src.includes("?") ? "&" : "?") + "doc=sermons&have=" + encodeURIComponent(have);
+    const j = await callScript({}, url);
+    if (j.unchanged && S.sdoc) { S.sdoc.at = Date.now(); idb.putDoc(S.sdoc).catch(() => {}); if (manual) toast("Sermons are up to date"); }
+    else {
+      const count = S.sermons.size;
+      S.sdoc = { key: "sermons", text: j.text || "", hash: j.hash || "", name: j.name || "", url: j.url || "", at: Date.now() };
+      try { await idb.putDoc(S.sdoc); } catch (e) { console.warn("couldn't keep sermons on this phone", e); }
+      applySermons(parseSermonText(S.sdoc.text));
+      const diff = S.sermons.size - count;
+      if (manual) toast(count && diff > 0 ? `${fmt(diff)} new sermon${diff === 1 ? "" : "s"}` : "Sermons are up to date");
+    }
+    S.serror = ""; S.snone = false;
+  } catch (e) {
+    console.warn("sermons", e);
+    S.snone = e && e.code === "script" && /sermons doc/i.test(e.message || "");
+    S.serror = S.snone ? "Your sermons doc isn't connected yet: add its ID to SERMONS_DOC_ID in your Apps Script and deploy a new version." : errText(e).replace(/quotes/g, "sermons");
+    if (manual) toast(S.serror, 4500);
+  } finally {
+    S.sloading = false; renderSync();
+    if (S.mode === "sermons" && !S.sermons.size) resetFeed();
+  }
+}
+
+/* PIN: stored on this phone as a salted SHA-256 hash. It keeps Sermons private in the app;
+   it isn't encryption. Unlocked until the app goes to the background. */
+const pinSaved = () => store.get("pin", null);
+async function pinHash(pin, salt) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ":" + pin));
+  return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+let pinStep = "", pinDigits = "", pinFirst = "", pinDone = null;
+function pinSetStep(step) {
+  pinStep = step; pinDigits = ""; drawPin();
+  const notes = { unlock: "Enter your PIN", current: "Enter your current PIN", create: "Choose a 4-digit PIN for Sermons", confirm: "Enter the same PIN again" };
+  $("#pinNote").textContent = notes[step];
+  $("#pinForgot").hidden = !(step === "unlock" || step === "current");
+}
+function drawPin() { $$("#pinDots i").forEach((d, i) => d.classList.toggle("on", i < pinDigits.length)); }
+function pinWrong(msg) {
+  const dots = $("#pinDots"); dots.classList.remove("shake"); void dots.offsetWidth; dots.classList.add("shake");
+  pinDigits = ""; drawPin(); if (msg) $("#pinNote").textContent = msg;
+}
+function askPin(onDone, change) {
+  pinDone = onDone; $("#pinReset").hidden = true; $("#f-pinreset").value = "";
+  pinSetStep(!pinSaved() ? "create" : change ? "current" : "unlock");
+  $("#pinTitle").textContent = change ? "Change PIN" : "Sermons";
+  openSheet($("#sheetPin"));
+}
+async function pinEntered() {
+  const pin = pinDigits, saved = pinSaved();
+  if (pinStep === "unlock" || pinStep === "current") {
+    if (saved && await pinHash(pin, saved.salt) === saved.hash) {
+      if (pinStep === "current") { pinSetStep("create"); return; }
+      unlockSermons(); return;
+    }
+    pinWrong("That's not it. Try again."); return;
+  }
+  if (pinStep === "create") { pinFirst = pin; pinSetStep("confirm"); return; }
+  if (pinStep === "confirm") {
+    if (pin !== pinFirst) { pinSetStep("create"); pinWrong("Those didn't match. Choose a PIN again."); return; }
+    const salt = rid(16);
+    store.set("pin", { salt, hash: await pinHash(pin, salt) });
+    toast("PIN saved");
+    unlockSermons();
+  }
+}
+function unlockSermons() {
+  S.unlocked = true; updateTabs();
+  $("#sheetPin").close();
+  const done = pinDone; pinDone = null;
+  if (done) done();
+  if (!S.sermons.size || !S.sdoc || Date.now() - (S.sdoc.at || 0) > 10 * 60e3) refreshSermons(false);
+}
+function lockSermons() {
+  if (!S.unlocked) return;
+  S.unlocked = false; updateTabs();
+  $$("dialog.sheet[open]").forEach(d => d.close());
+  if (S.mode === "sermons" || (S.mode === "fav" && cards.some(c => c.qid && getQ(c.qid) && getQ(c.qid).s))) resetFeed();
+}
+$("#pinPad").addEventListener("click", e => {
+  const b = e.target.closest("button[data-k]"); if (!b) return;
+  if (b.dataset.k === "del") { pinDigits = pinDigits.slice(0, -1); drawPin(); return; }
+  if (pinDigits.length >= 4) return;
+  pinDigits += b.dataset.k; drawPin();
+  if (pinDigits.length === 4) setTimeout(pinEntered, 120);
+});
+$("#pinForgot").onclick = () => { $("#pinReset").hidden = false; setTimeout(() => $("#f-pinreset").focus(), 50); };
+$("#pinResetGo").onclick = () => {
+  if (S.src && $("#f-pinreset").value.trim() === S.src) {
+    store.set("pin", null); $("#pinReset").hidden = true; pinSetStep("create"); toast("Choose a new PIN");
+  } else toast("That isn't your connection link.");
+};
+$("#pinChange").onclick = () => askPin(null, true);
+$("#sermonRefresh").onclick = () => { if (!S.unlocked) { askPin(() => refreshSermons(true)); return; } refreshSermons(true); };
+// lock Sermons whenever the app goes to the background (this also hides them from the app switcher)
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") lockSermons(); });
 
 /* ============ sheets ============ */
 /* panels open inside the stage (not as built-in modal dialogs, which iPhones pin to the screen and cut off) */
@@ -657,11 +858,14 @@ $("#addSave").onclick = submitAdd;
 let viewing = null;
 function openQuote(q) {
   viewing = q;
-  $("#qvText").textContent = q.t;
-  $("#qvAuthor").textContent = q.a || "";
+  $("#qvText").textContent = q.s ? quoteText(q) : q.t;
+  $("#qvText").classList.toggle("sermon-view", !!q.s);
+  $("#qvAuthor").textContent = q.s ? topicLabel(q.topic) : (q.a || "");
+  $("#quoteTitle").textContent = q.s ? "This sermon" : "This quote";
   $("#qvFav").textContent = isFav(q) ? "Unfavorite" : "Favorite";
   const hide = $("#qvHide"); hide.classList.remove("armed"); hide.textContent = S.hidden.has(q.id) ? "Show in my feed again" : "Hide from my feed";
-  const docA = $("#qvDoc"); docA.hidden = !(S.doc && S.doc.url); if (S.doc && S.doc.url) docA.href = S.doc.url;
+  const d = q.s ? S.sdoc : S.doc;
+  const docA = $("#qvDoc"); docA.hidden = !(d && d.url); if (d && d.url) docA.href = d.url;
   openSheet($("#sheetQuote"));
 }
 $("#qvFav").onclick = () => { toggleFav(viewing); $("#qvFav").textContent = isFav(viewing) ? "Unfavorite" : "Favorite"; };
@@ -683,19 +887,23 @@ let libFilter = "all", libShown = 80;
 function openLibrary() { libShown = 80; $("#f-search").value = ""; renderLibrary(); openSheet($("#sheetLibrary")); }
 function renderLibrary() {
   const qs = norm($("#f-search").value);
-  let list = [...S.quotes.values()];
+  const sermons = S.mode === "sermons" && S.unlocked, word = sermons ? "sermons" : "quotes";
+  $("#libTitle").textContent = sermons ? "Sermons" : "Library";
+  $("#libNoAuthor").hidden = sermons;
+  if (sermons && libFilter === "noa") libFilter = "all";
+  let list = [...(sermons ? S.sermons : S.quotes).values()];
   const total = list.length;
   if (libFilter === "fav") list = list.filter(isFav);
   if (libFilter === "noa") list = list.filter(q => !q.a);
-  if (qs) list = list.filter(q => norm(q.t + " " + q.a).includes(qs));
-  $("#libCount").textContent = qs || libFilter !== "all" ? `${fmt(list.length)} of ${fmt(total)} quotes` : `${fmt(total)} quotes, in your doc's order`;
+  if (qs) list = list.filter(q => norm(q.s ? q.title + " " + q.topic + " " + q.lines.map(l => l.r + " " + l.t).join(" ") : q.t + " " + q.a).includes(qs));
+  $("#libCount").textContent = qs || libFilter !== "all" ? `${fmt(list.length)} of ${fmt(total)} ${word}` : `${fmt(total)} ${word}, in your doc's order`;
   const box = $("#libList"); box.innerHTML = "";
-  if (!list.length) box.innerHTML = `<div class="lib-empty">${total ? "Nothing matches that." : "No quotes yet. Connect your Google Doc in Settings."}</div>`;
+  if (!list.length) box.innerHTML = `<div class="lib-empty">${total ? "Nothing matches that." : `No ${word} yet.`}</div>`;
   const frag = document.createDocumentFragment();
   for (const q of list.slice(0, libShown)) {
     const b = document.createElement("button"); b.className = "lib-row"; b.dataset.id = q.id;
-    const t = document.createElement("span"); t.className = "t"; t.textContent = q.t;
-    const a = document.createElement("span"); a.className = "a"; a.textContent = (q.a || "No author") + (S.hidden.has(q.id) ? " · hidden" : "");
+    const t = document.createElement("span"); t.className = "t"; t.textContent = q.s ? q.title : q.t;
+    const a = document.createElement("span"); a.className = "a"; a.textContent = (q.s ? (topicLabel(q.topic) || "Sermon") : (q.a || "No author")) + (S.hidden.has(q.id) ? " · hidden" : "");
     b.append(t, a); if (isFav(q)) b.insertAdjacentHTML("beforeend", HEART);
     frag.appendChild(b);
   }
@@ -711,7 +919,7 @@ $("#libMore").onclick = () => { libShown += 150; renderLibrary(); };
 });
 $("#libList").addEventListener("click", e => {
   const row = e.target.closest(".lib-row"); if (!row) return;
-  const q = S.quotes.get(row.dataset.id); if (!q) return;
+  const q = getQ(row.dataset.id); if (!q) return;
   $("#sheetLibrary").close(); openQuote(q);
 });
 
@@ -803,6 +1011,15 @@ function renderSync() {
   if (S.error) t += " " + S.error;
   const p = pending().length; if (p) t += ` ${fmt(p)} quote${p === 1 ? "" : "s"} written offline will be added when you're connected.`;
   note.textContent = t;
+  // sermons
+  let st;
+  if (S.sloading) st = "Checking your sermons doc…";
+  else if (S.serror) st = S.serror;
+  else if (S.sdoc && S.sdoc.at) st = `Reading “${S.sdoc.name || "your sermons doc"}”. ${fmt(S.sermons.size)} sermons, checked ${ago(S.sdoc.at)}. They update when you open Sermons.`;
+  else st = "Your sermons load the first time you open the Sermons tab.";
+  $("#sermonNote").textContent = st + (pinSaved() ? " Sermons lock again whenever you leave the app." : "");
+  $("#pinChange").hidden = !pinSaved();
+  $("#sermonRefresh").disabled = S.sloading || !S.src;
 }
 $("#syncNow").onclick = () => refresh(true);
 $("#srcSave").onclick = () => { if (connect($("#f-src").value)) { $("details").open = false; renderSync(); } };
@@ -815,9 +1032,9 @@ function syncSettings() {
   $("#bgNote").textContent = S.bg === "painted" ? "Every quote gets a freshly painted scene: mountains, lakes, oceans, night skies, auroras, misty forests, dunes and clouds."
     : !src ? "Add a few photos below or turn on online photos. Until then you'll see painted scenes."
     : S.bg === "mix" ? `About half your quotes show ${src}; the rest get painted scenes.` : `Each quote shows one of ${src}.`;
-  const hidden = [...S.hidden].filter(k => S.quotes.has(k)).length;
+  const hidden = [...S.hidden].filter(k => S.quotes.has(k) || S.sermons.has(k)).length;
   $("#hiddenField").hidden = !hidden;
-  $("#hiddenNote").textContent = `${fmt(hidden)} quote${hidden === 1 ? " is" : "s are"} hidden from your feed on this phone.`;
+  $("#hiddenNote").textContent = `${fmt(hidden)} item${hidden === 1 ? " is" : "s are"} hidden from your feed on this phone.`;
   const favs = [...S.quotes.values()].filter(isFav).length, au = new Set([...S.quotes.values()].map(q => q.a).filter(Boolean)).size;
   $("#setStats").textContent = S.quotes.size ? `${fmt(S.quotes.size)} quotes from ${fmt(au)} people · ${fmt(favs)} favorites` : "";
   // screen measurements help when something doesn't fill the screen
@@ -873,8 +1090,8 @@ async function uploadPhotos(files) {
 }
 
 /* ============ boot ============ */
-$("#modeAll").setAttribute("aria-pressed", String(S.mode === "all"));
-$("#modeFav").setAttribute("aria-pressed", String(S.mode === "fav"));
+if (!["quotes", "fav", "sermons"].includes(S.mode)) S.mode = "quotes";
+updateTabs();
 if (S.doc && S.doc.text) S.quotes = new Map(parseDocText(S.doc.text).map((p, i) => [p.k, { id: p.k, t: p.t, a: p.a, i }]));
 takeHashQuote();
 updateCount(); resetFeed();
@@ -886,6 +1103,9 @@ loadPhotos().then(() => {
   if (S.bg !== "painted") rebg(true);
 });
 refresh(false);
+// sermons come from IndexedDB right away; the doc itself is checked when Sermons is unlocked
+loadSermonsCache();
+document.fonts && document.fonts.ready.then(() => cards.forEach(c => { if (c.type === "sermon") fitSermon(c); }));
 
 // check the doc again when the app comes back to the foreground after a while
 window.addEventListener("hashchange", () => { if (takeHashQuote()) resetFeed(); });
@@ -896,6 +1116,9 @@ document.addEventListener("visibilitychange", () => {
 });
 let rz;
 window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { cards.forEach(c => { if (c.qid) fillCard(c); releaseBg(c); }); schedule(); }, 250); });
+// tapping hides the buttons, which gives a sermon's panel more room: fit it again
+new MutationObserver(() => setTimeout(() => cards.forEach((c, i) => { if (c.type === "sermon" && Math.abs(i - current) <= 2) fitSermon(c); }), 260))
+  .observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(e => console.warn("sw", e));

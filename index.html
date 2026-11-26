@@ -27,15 +27,15 @@
   <div class="pill">
     <button class="ibtn" id="btnLibrary" aria-label="Open your library">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 4.5h3.2v15H5zM10.4 4.5h3.2v15h-3.2zM16 5.2l3-.7 2.9 14.4-3 .7z"/></svg>
-      <span id="countLabel">…</span>
     </button>
   </div>
   <div class="pill seg" role="group" aria-label="Which quotes to show">
-    <button class="ibtn" id="modeAll" aria-pressed="true">All</button>
+    <button class="ibtn" id="modeQuotes" aria-pressed="true">Quotes</button>
     <button class="ibtn" id="modeFav" aria-pressed="false">
       <svg class="ic-heart" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:15px;height:15px"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.7 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.2 4.3 6.6-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg>
       Favorites
     </button>
+    <button class="ibtn" id="modeSermons" aria-pressed="false"><svg class="ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="5" y="11" width="14" height="9.5" rx="2.2"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></svg> Sermons</button>
   </div>
   <div class="pill">
     <button class="ibtn" id="btnSettings" aria-label="Settings">
@@ -120,6 +120,31 @@
   </div>
 </dialog>
 
+<!-- PIN for Sermons -->
+<dialog class="sheet" id="sheetPin" aria-labelledby="pinTitle">
+  <div class="sh-head">
+    <button class="txt-btn" data-close>Cancel</button>
+    <h2 id="pinTitle">Sermons</h2>
+    <span style="width:44px"></span>
+  </div>
+  <div class="sh-body pin">
+    <p class="note" id="pinNote">Enter your PIN</p>
+    <div class="pin-dots" id="pinDots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="pin-pad" id="pinPad">
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+      <span></span><button data-k="0">0</button><button data-k="del" aria-label="Delete">⌫</button>
+    </div>
+    <button class="txt-btn" id="pinForgot">Forgot your PIN?</button>
+    <div id="pinReset" hidden class="field">
+      <span>Reset with your connection link</span>
+      <input type="url" id="f-pinreset" class="doclink" placeholder="Paste your connection link" autocomplete="off" spellcheck="false" aria-label="Connection link">
+      <button class="pbtn" id="pinResetGo">Reset PIN</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- Library -->
 <dialog class="sheet" id="sheetLibrary" aria-labelledby="libTitle">
   <div class="sh-head">
@@ -164,6 +189,13 @@
           <button class="pbtn" id="srcSave">Save link</button>
         </div>
       </details>
+    </div>
+    <div class="field" id="sermonField"><span>Sermons</span>
+      <p class="note" id="sermonNote"></p>
+      <div class="actions-row">
+        <button class="pbtn grow" id="sermonRefresh">Refresh sermons</button>
+        <button class="pbtn grow" id="pinChange">Change PIN</button>
+      </div>
     </div>
     <div class="field"><span>Notifications</span>
       <p class="note" id="notifNote"></p>

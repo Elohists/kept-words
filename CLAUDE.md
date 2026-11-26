@@ -11,6 +11,15 @@ Read README.md first for the architecture and the owner's setup.
 - No quote numbers are shown in the app.
 - The doc is newest first: the app's + button inserts new quotes at the top of the doc, above the first quote and below the "Words of Life" title (`doPost` in `apps-script/Code.gs`).
 
+## Sermons
+- A second doc of ~915 sermon outlines, read by `sermons_()` in `apps-script/Code.gs` (`?doc=sermons&have=<md5>`; answers `unchanged` when the phone's copy matches). Its ID goes in `SERMONS_DOC_ID` in the owner's Apps Script only, never in this repo.
+- `parseSermonText` in `docparse.js`: a title is a line ending in a label with a dash and a digit or "Preface" — "(1-19)", "(Transcription-237)", "(Sermon Collection 1-6)". Scripture refs like "(Mt 10:40–42)" have a colon and never count. Topic headings ("Prayer and the Spiritual Life") sit right above a title.
+- **The codes in brackets are never shown in the app**; they stay in the doc. "Additional Notes" topics aren't shown; "Additional Notes: Prophecy" shows as "Prophecy".
+- Sermon cards size their text to fit the panel (`fitSermon`, 11.5–17.5 px); ~4% of very long ones scroll inside the panel. No tap-to-expand.
+- Tabs: Quotes · Favorites · Sermons. One Favorites tab holds both; favorite sermons only show while Sermons is unlocked.
+- Sermons need a 4-digit PIN (salted SHA-256 in localStorage `kw.pin`), and lock whenever the app goes to the background. It's a privacy screen, not encryption. Reset by pasting the connection link.
+- Hourly notifications are quotes only. Sermons are shared as text, not pictures.
+
 ## The full-screen layout (iPhone)
 - Tested on an iPhone 16 Pro Max Home Screen app (lab/ screen test): with the see-through status bar
   (`black-translucent`), anything `position: fixed` (and built-in modal `<dialog>`s) is clipped 62 pt
