@@ -11,6 +11,9 @@ Read README.md first for the architecture and the owner's setup.
 - No quote numbers are shown in the app.
 - The doc is newest first: the app's + button inserts new quotes at the top of the doc, above the first quote and below the "Words of Life" title (`doPost` in `apps-script/Code.gs`).
 
+## The quotes doc's title
+- The script keeps the title in the form "1,795 Quotes || 20261120" (`updateTitle_` in `apps-script/Code.gs`): the count is every line in the **whole** doc (letters section included) that starts with a quotation mark — that's how the owner counts, and it matched exactly — and the date (yyyyMMdd, script time zone) is the day the text last changed. It runs on every doGet (each app open and the hourly job) and after the + button adds a quote. Titles in any other format are left alone.
+
 ## Sermons
 - A second doc of ~915 sermon outlines, read by `sermons_()` in `apps-script/Code.gs` (`?doc=sermons&have=<md5>`; answers `unchanged` when the phone's copy matches). Its ID goes in `SERMONS_DOC_ID` in the owner's Apps Script only, never in this repo.
 - `parseSermonText` in `docparse.js`: a title is a line ending in a label with a dash and a digit or "Preface" — "(1-19)", "(Transcription-237)", "(Sermon Collection 1-6)". Scripture refs like "(Mt 10:40–42)" have a colon and never count. Topic headings ("Prayer and the Spiritual Life") sit right above a title.

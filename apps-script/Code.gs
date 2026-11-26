@@ -22,6 +22,8 @@ const SERMONS_DOC_ID = '';
 
 function doGet(e) {
   try {
+    // keep the doc's title count and date current (the hourly job and every app open come through here)
+    try { updateTitle_(doc_()); } catch (err) {}
     // the hourly notification job asks for the phones that turned notifications on
     if (e && e.parameter && e.parameter.action === 'subs') return reply_({ ok: true, subs: subs_() });
     if (e && e.parameter && e.parameter.doc === 'sermons') return reply_(sermons_(e.parameter.have || ''));
@@ -112,6 +114,7 @@ function doPost(e) {
     if (blanks.length) blanks.forEach(b => out.push(isPara(b) ? b.copy() : make(null, '')));
     else out.push(make(null, ''));
     out.forEach((p, i) => body_.insertParagraph(idx + i, p));
+    try { updateTitle_(doc); } catch (err) {}
     return reply_(quotesFrom_(doc));
   } catch (err) {
     return reply_({ ok: false, error: String(err.message || err) });
@@ -131,6 +134,28 @@ function readQuotes_() {
   return quotesFrom_(doc_());
 }
 
+/* ---- the doc's title: "1,795 Quotes || 20261120" ----
+   The count is every line in the whole doc that starts with a quotation mark (the letters section
+   included). The date is the day the doc's text last changed. Titles in any other format are left alone. */
+const TITLE_FORMAT = /^\s*[\d,]+\s+Quotes\s*\|\|\s*\d{8}\s*$/;
+function updateTitle_(doc) {
+  const name = doc.getName();
+  if (!TITLE_FORMAT.test(name)) return;
+  const text = doc.getBody().getText();
+  const hash = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, text, Utilities.Charset.UTF_8));
+  const props = PropertiesService.getScriptProperties();
+  const seen = props.getProperty('titleHash');
+  if (seen === hash) return;
+  props.setProperty('titleHash', hash);
+  const count = text.split('\n').filter(function (l) { return /^\s*["\u201C\u201D]/.test(l); }).length;
+  const shown = Number(name.match(/[\d,]+/)[0].replace(/,/g, ''));
+  // the very first time, only fix the title if the count is off (the text hasn't been seen changing yet)
+  if (!seen && shown === count) return;
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
+  const pretty = String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  doc.setName(pretty + ' Quotes || ' + today);
+}
+
 function quotesFrom_(doc) {
   const lines = doc.getBody().getText().split('\n');
   const cut = lines.findIndex(function (l) { return CUTOFF.test(l); });
@@ -144,6 +169,7 @@ function reply_(obj) {
 
 /** Run this once from the editor (select it and press Run) to approve access and check it works. */
 function test() {
+  updateTitle_(doc_());
   const r = readQuotes_();
   Logger.log(r.name + ': ' + r.text.length + ' characters of quotes');
 }
