@@ -1,6 +1,6 @@
 /* Words of Life — service worker: makes the app open with no internet.
    Bump VERSION whenever any app file changes so phones pick up the new files. */
-const VERSION = "kw-1.3.1";
+const VERSION = "kw-1.3.2";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "painter.js", "docparse.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 const RUNTIME = "kw-runtime";

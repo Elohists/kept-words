@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.3.1";
+const APP_VERSION = "1.3.2";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -513,7 +513,8 @@ function ensureBg(c) {
   }
   const cv = document.createElement("canvas");
   cv.className = "bg";
-  cv.width = Math.round(w * SCALE); cv.height = Math.round(h * SCALE);
+  const scale = c.kind === "paper" ? 1 : SCALE;
+  cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
   if (c.kind === "paper") {
     try { paintPaper(cv, c.seed); } catch (e) { console.error(e); }
     if (c !== cards[current]) cv.classList.add("fade");
@@ -538,6 +539,8 @@ function schedule() {
 function pump() {
   if (!queue.size) { busy = false; return; }
   busy = true;
+  // hold off while a swipe is moving
+  if (Date.now() - lastScroll < 180) { setTimeout(pump, 120); return; }
   const next = [...queue].sort((a, b) => Math.abs(cards.indexOf(a) - current) - Math.abs(cards.indexOf(b) - current))[0];
   queue.delete(next);
   if (cards.includes(next)) ensureBg(next);
@@ -550,11 +553,22 @@ function onIntersect(v, entries) {
     else { const i = v.cards.findIndex(c => c.el === e.target); if (i >= 0) v.current = i; }
   }
 }
+/* Building new cards (sermons especially: their text is measured several times to fit) and painting
+   backgrounds is done once a swipe has settled, never in the middle of one, so the slide stays smooth. */
+let lastScroll = 0, idleT = null;
+function whenSettled(fn) {
+  clearTimeout(idleT);
+  const wait = 180 - (Date.now() - lastScroll);
+  if (wait > 0) idleT = setTimeout(() => whenSettled(fn), wait); else fn();
+}
 function onCurrent() {
-  const cc = cards[current];
-  if (cc && cc.type === "sermon" && cc.el.querySelector(".s") && Math.abs((cc.fitH || 0) - cc.el.querySelector(".s").clientHeight) > 1) fitSermon(cc);
-  if (cards.length - current < 4 && cards.some(c => c.qid)) appendCards(6);
-  updateDock(); schedule();
+  updateDock();
+  whenSettled(() => {
+    const cc = cards[current];
+    if (cc && cc.type === "sermon" && cc.el.querySelector(".s") && Math.abs((cc.fitH || 0) - cc.el.querySelector(".s").clientHeight) > 1) fitSermon(cc);
+    if (cards.length - current < 4 && cards.some(c => c.qid)) appendCards(cc && cc.type === "sermon" ? 3 : 6);
+    schedule();
+  });
 }
 function curQuote() { const c = cards[current]; return c && c.qid ? getQ(c.qid) : null; }
 function updateDock() {
@@ -1260,6 +1274,7 @@ let rz;
 window.addEventListener("resize", () => { placeTrack(0, 0); clearTimeout(rz); rz = setTimeout(() => { cards.forEach(c => { if (c.qid) fillCard(c); releaseBg(c); }); schedule(); }, 250); });
 // a long sermon's fade goes away once it's scrolled to the end (scroll events don't bubble, so listen while capturing)
 track.addEventListener("scroll", e => {
+  if (e.target.classList && e.target.classList.contains("feed")) { lastScroll = Date.now(); return; }
   const b = e.target; if (!b.classList || !b.classList.contains("s-body")) return;
   b.parentElement.classList.toggle("at-end", b.scrollTop + b.clientHeight >= b.scrollHeight - 4);
 }, true);
