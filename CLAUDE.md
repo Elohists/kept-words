@@ -22,7 +22,7 @@ Read README.md first for the architecture and the owner's setup.
 - **The codes in brackets are never shown in the app**; they stay in the doc. **Topics aren't shown either** (the parser still reads them).
 - Sermons always sit on a papyrus / parchment / old-paper background (`paintPaper` in `painter.js`), in dark ink with red scripture tags, whatever the quotes' background setting.
 - Sermon cards size their text to fit the panel (`fitSermon`, 11.5–17.5 px); ~4% of very long ones scroll inside the panel. No tap-to-expand.
-- Tabs: Quotes · Favorites · Sermons, by tapping the top bar or swiping left/right on the feed (a clear sideways flick; Sermons still asks for the PIN). One Favorites tab holds both; favorite sermons only show while Sermons is unlocked.
+- Tabs: Quotes · Favorites · Sermons, by tapping the top bar or swiping sideways. **Each tab has its own feed** (`views` in `app.js`: cards, shuffle deck, current place) side by side on `#track`, which slides; switching tabs never resets a tab. The globals `feed / cards / deck / current / io` are the *active* tab's — use `showTab(m)` to switch, `withView(m, fn)` / `eachView(fn)` / `resetTabs([...])` to act on other tabs. The drag follows the finger (`placeTrack`), commits past 25% of the width or on a flick, and resists past the ends. Only locking Sermons (leaving the app) resets the Sermons feed, and Favorites if it showed a sermon. One Favorites tab holds both; favorite sermons only show while Sermons is unlocked.
 - **The Sermons PIN is fixed by the owner and can't be set, changed or reset in the app.** It is 6 digits. Only its salted SHA-256 fingerprint is in `app.js` (`PIN_HASH`, with `PIN_LENGTH`); to change it, compute `sha256("kw-sermons:" + pin)`, and match the dots in `index.html` to the length. Sermons lock whenever the app goes to the background. It's a privacy screen, not encryption — the repo is public, so a short PIN's fingerprint can be worked out by anyone determined.
 - The library's item panel has **View in feed**, which restarts the feed on that quote or sermon (switching tabs if needed).
 - Hourly notifications are quotes only. Sermons are shared as text, not pictures.
@@ -42,5 +42,5 @@ Read README.md first for the architecture and the owner's setup.
 - `docparse.js` is shared by the app (browser) and `scripts/notify.cjs` (Node). Keep it plain JS that works in both.
 - **Bump `VERSION` in `sw.js` (and `APP_VERSION` in `app.js`) on every change to app files**, or phones keep serving the old copy.
 - If `apps-script/Code.gs` changes, the owner has to paste it into Apps Script and deploy a new version (README step 1). Say so clearly; nothing else updates it.
-- Painted backgrounds are drawn by `painter.js` from a seed (8 scene types). Online photos come from picsum.photos.
+- Painted backgrounds are drawn by `painter.js` from a seed (8 scene types). Photos are only the owner's own (IndexedDB). Online photos were removed: the random photo service can't be limited to nature.
 - Test by serving the folder (`python3 -m http.server`) and faking the script in Playwright with `page.route('https://script.google.com/**', …)`, answering `{ok, name, url, text}`.

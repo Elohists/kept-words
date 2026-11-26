@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.8";
+const APP_VERSION = "1.3.0";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -114,7 +114,6 @@ const S = {
   unlocked: false,                      // Sermons open until the app goes to the background
   bg: store.get("bg", "painted"),
   font: store.get("font", "random"),
-  online: store.get("online", true),
   loading: false, error: "",
 };
 const saveFavs = () => store.set("favs", [...S.favs]);
@@ -169,7 +168,7 @@ async function refresh(manual) {
     console.warn("refresh", e);
     S.error = errText(e);
     if (manual || !S.quotes.size) toast(S.error, 4200);
-    if (!S.quotes.size) resetFeed();
+    if (!S.quotes.size) resetTabs(["quotes", "fav"]);
   } finally { S.loading = false; renderSync(); }
 }
 async function addQuote(t, a) {
@@ -203,9 +202,10 @@ function applyQuotes(parsed) {
   const before = new Set(S.quotes.keys());
   S.quotes = new Map(parsed.map((p, i) => [p.k, { id: p.k, t: p.t, a: p.a, i }]));
   updateCount(); saveForNotifications();
-  const showing = S.mode !== "sermons";
-  if (showing && (wasEmpty || S.quotes.size === 0 || (openFirst && S.quotes.has(openFirst)))) { resetFeed(); return; }
-  mergeIntoFeed(before, S.quotes);
+  if (wasEmpty || S.quotes.size === 0) { resetTabs(["quotes", "fav"]); return; }
+  if (openFirst && S.quotes.has(openFirst)) { openOn(openFirst); return; }
+  ["quotes", "fav"].forEach(m => { if (views[m].built) withView(m, () => mergeIntoFeed(before, S.quotes)); });
+  updateDock();
 }
 /* new and removed items slot into the running feed without starting it over */
 function mergeIntoFeed(before, now) {
@@ -266,9 +266,37 @@ async function loadPhotos() {
   } catch (e) { console.warn("photos", e); S.photos = []; }
 }
 
-/* ============ feed ============ */
-const feed = $("#feed");
-let cards = [], deck = [], current = 0, lastScene = "", lastPhoto = "";
+/* ============ feeds: one per tab, side by side ============ */
+/* Each tab (Quotes · Favorites · Sermons) has its own feed — its own cards, shuffle and place — on a
+   track that slides sideways, so changing tabs never loses your place. The rest of the code works on
+   the "active" feed through feed / cards / deck / current / io; showTab and withView swap those over. */
+const TABS = ["quotes", "fav", "sermons"];
+if (!TABS.includes(S.mode)) S.mode = "quotes";
+const track = document.createElement("div"); track.id = "track";
+const firstFeed = $("#feed"); firstFeed.parentNode.insertBefore(track, firstFeed);
+const views = {};
+TABS.forEach((m, i) => {
+  const el = i === 0 ? firstFeed : document.createElement("main");
+  el.className = "feed"; el.dataset.tab = m; el.style.setProperty("--i", i);
+  el.setAttribute("aria-label", { quotes: "Quotes", fav: "Favorites", sermons: "Sermons" }[m]);
+  track.appendChild(el);
+  const v = views[m] = { m, el, cards: [], deck: [], current: 0, built: false };
+  v.io = new IntersectionObserver(entries => onIntersect(v, entries), { root: el, threshold: [.55, .9] });
+});
+let view = views[S.mode], feed = view.el, cards = view.cards, deck = view.deck, current = 0, io = view.io;
+let lastScene = "", lastPhoto = "";
+function saveView() { view.cards = cards; view.deck = deck; view.current = current; }
+function loadView(v) { view = v; feed = v.el; cards = v.cards; deck = v.deck; current = v.current; io = v.io; }
+// run fn with tab m as the active feed (realPool and drawId read S.mode), then switch back
+function withView(m, fn) {
+  if (m === view.m) return fn();
+  saveView(); const prev = view, prevMode = S.mode;
+  loadView(views[m]); S.mode = m;
+  try { return fn(); } finally { saveView(); loadView(prev); S.mode = prevMode; }
+}
+// do something to every tab's feed that has been built
+function eachView(fn) { TABS.forEach(m => { if (views[m].built) withView(m, fn); }); updateDock(); }
+function resetTabs(list) { list.forEach(m => { if (views[m].built) withView(m, resetFeed); }); updateDock(); }
 
 function realPool() {
   const visible = m => [...m.values()].filter(q => !S.hidden.has(q.id));
@@ -290,22 +318,19 @@ function drawId() {
   }
   return deck.shift();
 }
-function photoPool() { return S.photos.length + (S.online ? 1 : 0); }
+// only your own photos: online photos came from a random photo service that can't be limited to nature
+function photoPool() { return S.photos.length; }
 function bgKind() {
   if (!photoPool()) return "paint";
   if (S.bg === "photos") return "photo";
   if (S.bg === "mix") return Math.random() < .5 ? "photo" : "paint";
   return "paint";
 }
-function pickPhoto(seed) {
-  // your own photos come first; online photos only fill in a quarter of the time
-  const own = S.photos.length, useOwn = own && (!S.online || Math.random() < .75);
-  if (useOwn) {
-    let p = S.photos[Math.floor(Math.random() * own)];
-    if (own > 1 && p.id === lastPhoto) p = S.photos[(S.photos.indexOf(p) + 1) % own];
-    lastPhoto = p.id; return { own: p.id };
-  }
-  return { online: seed.toString(36) };
+function pickPhoto() {
+  const own = S.photos.length;
+  let p = S.photos[Math.floor(Math.random() * own)];
+  if (own > 1 && p.id === lastPhoto) p = S.photos[(S.photos.indexOf(p) + 1) % own];
+  lastPhoto = p.id; return { own: p.id };
 }
 function assignBg(c) {
   const item = c.qid && getQ(c.qid);
@@ -452,6 +477,7 @@ function takeHashQuote() {
   openFirst = k; return true;
 }
 function resetFeed() {
+  view.built = true;
   cards.forEach(c => { io.unobserve(c.el); releaseBg(c); });
   feed.innerHTML = ""; cards = []; deck = []; current = 0;
   if (openFirst && getQ(openFirst) && !getQ(openFirst).ex && (S.unlocked || !getQ(openFirst).s)) { deck = [openFirst]; }
@@ -479,8 +505,8 @@ function ensureBg(c) {
     const img = document.createElement("img");
     img.className = "bg fade"; img.alt = ""; img.decoding = "async";
     img.onerror = () => { img.remove(); c.kind = "paint"; c.scene = chooseScene(rng(c.seed), ""); c.painted = false; ensureBg(c); };
-    if (c.photo.own) { const p = S.photos.find(x => x.id === c.photo.own); if (!p) { img.onerror(); return; } img.src = p.url; }
-    else { const dpr = Math.min(window.devicePixelRatio || 1, 2); img.src = `https://picsum.photos/seed/kw${c.photo.online}/${Math.round(w * dpr)}/${Math.round(h * dpr)}`; }
+    const p = S.photos.find(x => x.id === c.photo.own); if (!p) { img.onerror(); return; }
+    img.src = p.url;
     c.el.style.setProperty("--scrim", ".44");
     c.el.prepend(img); c.bgEl = img;
     return;
@@ -517,14 +543,13 @@ function pump() {
   if (cards.includes(next)) ensureBg(next);
   requestAnimationFrame(() => setTimeout(pump, 16));
 }
-const io = new IntersectionObserver(entries => {
+function onIntersect(v, entries) {
   for (const e of entries) {
-    if (e.isIntersecting && e.intersectionRatio > .55) {
-      const i = cards.findIndex(c => c.el === e.target);
-      if (i >= 0 && i !== current) { current = i; onCurrent(); }
-    }
+    if (!e.isIntersecting || e.intersectionRatio <= .55) continue;
+    if (v === view) { const i = cards.findIndex(c => c.el === e.target); if (i >= 0 && i !== current) { current = i; onCurrent(); } }
+    else { const i = v.cards.findIndex(c => c.el === e.target); if (i >= 0) v.current = i; }
   }
-}, { root: feed, threshold: [.55, .9] });
+}
 function onCurrent() {
   const cc = cards[current];
   if (cc && cc.type === "sermon" && cc.el.querySelector(".s") && Math.abs((cc.fitH || 0) - cc.el.querySelector(".s").clientHeight) > 1) fitSermon(cc);
@@ -549,15 +574,15 @@ function updateCount() {
 
 /* ============ gestures and buttons ============ */
 let tapTimer = null, lastTap = 0;
-feed.addEventListener("click", e => {
+track.addEventListener("click", e => {
   const act = e.target.closest("[data-act]");
   if (act) {
     const a = act.dataset.act;
     if (a === "connect") connect($("#f-connect").value);
-    else if (a === "retry") { S.error = ""; resetFeed(); refresh(true); }
+    else if (a === "retry") { S.error = ""; resetTabs(["quotes", "fav"]); refresh(true); }
     else if (a === "settings") openSettings();
-    else if (a === "all") setMode("quotes");
-    else if (a === "unlock") askPin(() => setMode("sermons"));
+    else if (a === "all") showTab("quotes");
+    else if (a === "unlock") askPin(() => showTab("sermons", 0));
     else if (a === "sretry") { S.serror = ""; resetFeed(); refreshSermons(true); }
     return;
   }
@@ -577,7 +602,13 @@ function toggleFav(q, force) {
   const f = force ?? !isFav(q);
   if (f) S.favs.add(q.id); else S.favs.delete(q.id);
   saveFavs(); updateDock();
-  if (S.mode === "fav" && !f) deck = deck.filter(id => id !== q.id);
+  if (views.fav.built) withView("fav", () => {
+    // the Favorites feed was empty ("No favorites yet"): start it now that there's something in it
+    if (f && cards.every(c => !c.qid)) { resetFeed(); return; }
+    deck = deck.filter(id => id !== q.id);
+    if (f && (!q.s || S.unlocked)) deck.splice(Math.floor(Math.random() * (deck.length + 1)), 0, q.id);
+    if (cards.length - current < 4) appendCards(4);
+  });
   toast(f ? "Added to favorites" : "Removed from favorites", 1300);
 }
 const quoteText = q => q.s
@@ -700,52 +731,95 @@ function updateTabs() {
   document.body.classList.toggle("unlocked", S.unlocked);
   $("#modeSermons").setAttribute("aria-label", S.unlocked ? "Sermons" : "Sermons, locked");
 }
-function setMode(m) {
-  S.mode = m; store.set("mode", m);
-  updateTabs(); updateCount();
+const EASE = "cubic-bezier(.22,.8,.24,1)";
+const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// put the track at the active tab, offset by dx (while dragging), sliding over ms
+function placeTrack(dx = 0, ms = 0) {
+  const w = track.parentNode.clientWidth || window.innerWidth;
+  track.style.transition = ms && !reduceMotion() ? `transform ${ms}ms ${EASE}` : "none";
+  track.style.transform = `translate3d(${-TABS.indexOf(view.m) * w + dx}px,0,0)`;
+}
+// build a tab's feed the first time it's needed and make sure its current screen has its background
+function prepare(m) {
+  withView(m, () => { if (!view.built) resetFeed(); const c = cards[current]; if (c) ensureBg(c); });
+}
+// switch tabs, keeping each tab's place; slides over ms
+function showTab(m, ms = 340) {
+  if (m !== view.m) {
+    prepare(m);
+    saveView(); loadView(views[m]);
+    S.mode = m; store.set("mode", m);
+    updateTabs(); updateCount();
+  } else if (!view.built) resetFeed();
+  placeTrack(0, ms);
+  updateDock(); schedule();
+  if (m === "sermons") {
+    if (!S.unlocked) askPin(() => showTab("sermons", 0));
+    else if (!S.sermons.size) refreshSermons(false);
+  }
+}
+const setMode = m => showTab(m);
+// start a tab's feed over on one quote or sermon (View in feed, notifications)
+function openOn(id) {
+  const q = getQ(id); if (!q) return;
+  const tab = q.s ? "sermons" : (S.mode === "fav" && isFav(q) ? "fav" : "quotes");
+  openFirst = id;
+  showTab(tab, 0);
   resetFeed();
-  if (m === "sermons" && S.unlocked && !S.sermons.size) refreshSermons(false);
 }
-$("#modeQuotes").onclick = () => S.mode !== "quotes" && setMode("quotes");
-$("#modeFav").onclick = () => S.mode !== "fav" && setMode("fav");
-$("#modeSermons").onclick = () => { if (S.mode === "sermons" && S.unlocked) return; if (S.unlocked) setMode("sermons"); else askPin(() => setMode("sermons")); };
+$("#modeQuotes").onclick = () => showTab("quotes");
+$("#modeFav").onclick = () => showTab("fav");
+$("#modeSermons").onclick = () => showTab("sermons");
 
-/* swipe left or right on the feed to move between Quotes · Favorites · Sermons (Sermons still asks for the PIN) */
-const TABS = ["quotes", "fav", "sermons"];
-function slideIn(dir) {
-  if (!feed.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  feed.animate([{ transform: `translateX(${dir * 56}px)`, opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" });
-}
-function goTab(m, dir) {
-  const show = () => { setMode(m); slideIn(dir); };
-  if (m === "sermons" && !S.unlocked) askPin(show); else show();
-}
-let swipe = null;
-feed.addEventListener("touchstart", e => {
+/* swipe sideways to change tabs: the feeds follow your finger, then glide to the next tab or spring back */
+let drag = null;
+track.addEventListener("touchstart", e => {
+  if (e.touches.length !== 1 || document.querySelector("dialog.sheet[open]")) { drag = null; return; }
   const t = e.touches[0];
-  swipe = e.touches.length === 1 ? { x: t.clientX, y: t.clientY, at: Date.now() } : null;
+  drag = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastAt: Date.now(), v: 0, mode: "" };
 }, { passive: true });
-feed.addEventListener("touchend", e => {
-  if (!swipe) return;
-  const t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y, dt = Date.now() - swipe.at;
-  swipe = null;
-  // a clear sideways flick: far enough, mostly horizontal, not a slow drag
-  if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6 || dt > 700) return;
-  if (document.querySelector("dialog.sheet[open]")) return;
-  const next = TABS.indexOf(S.mode) + (dx < 0 ? 1 : -1);
-  if (next < 0 || next >= TABS.length) return;
-  clearTimeout(tapTimer); lastTap = 0; // a swipe isn't a tap
-  goTab(TABS[next], dx < 0 ? 1 : -1);
+track.addEventListener("touchmove", e => {
+  if (!drag || e.touches.length !== 1) return;
+  const t = e.touches[0], dx = t.clientX - drag.x, dy = t.clientY - drag.y;
+  if (!drag.mode) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    drag.mode = Math.abs(dx) > Math.abs(dy) * 1.3 ? "x" : "y";   // decide once: sideways or scrolling
+    if (drag.mode === "x") { clearTimeout(tapTimer); lastTap = 0; const n = TABS[TABS.indexOf(view.m) + (dx < 0 ? 1 : -1)]; if (n) prepare(n); }
+  }
+  if (drag.mode !== "x") return;
+  const now = Date.now();
+  drag.v = (t.clientX - drag.lastX) / Math.max(1, now - drag.lastAt); drag.lastX = t.clientX; drag.lastAt = now;
+  const next = TABS.indexOf(view.m) + (dx < 0 ? 1 : -1);
+  if (next >= 0 && next < TABS.length && !views[TABS[next]].built) prepare(TABS[next]);
+  placeTrack(next < 0 || next >= TABS.length ? dx * .28 : dx, 0);   // resists past the first and last tab
 }, { passive: true });
-feed.addEventListener("touchcancel", () => { swipe = null; }, { passive: true });
+function endDrag(cancelled) {
+  const d = drag; drag = null;
+  if (!d || d.mode !== "x") return;
+  const w = track.parentNode.clientWidth || window.innerWidth;
+  const dx = d.lastX - d.x, dir = dx < 0 ? 1 : -1, next = TABS.indexOf(view.m) + dir;
+  const flick = Math.abs(d.v) > .45 && (d.v < 0) === (dir === 1) && Math.abs(dx) > 24;
+  if (cancelled || next < 0 || next >= TABS.length || !(Math.abs(dx) > w * .25 || flick)) { placeTrack(0, 300); return; }
+  // glide the rest of the way at about the speed of the swipe
+  const ms = Math.round(Math.max(180, Math.min(340, (w - Math.abs(dx)) / Math.max(.9, Math.abs(d.v)))));
+  showTab(TABS[next], ms);
+}
+track.addEventListener("touchend", () => endDrag(false), { passive: true });
+track.addEventListener("touchcancel", () => endDrag(true), { passive: true });
 
 /* ============ Sermons: second doc and PIN ============ */
 function applySermons(parsed) {
   const before = new Set(S.sermons.keys());
   S.sermons = new Map(parsed.map((p, i) => [p.k, { id: p.k, s: true, title: p.title, topic: p.topic, lines: p.lines, i }]));
   updateCount();
-  if (S.mode === "sermons" && (!before.size || !S.sermons.size || cards.some(c => c.intro))) { resetFeed(); return; }
-  if (S.mode === "sermons" || S.mode === "fav") mergeIntoFeed(before, S.sermons);
+  const sv = views.sermons;
+  if (sv.built) {
+    const intro = (sv === view ? cards : sv.cards).some(c => c.intro);
+    if (!before.size || !S.sermons.size || intro) withView("sermons", resetFeed);
+    else withView("sermons", () => mergeIntoFeed(before, S.sermons));
+  }
+  if (views.fav.built && before.size) withView("fav", () => mergeIntoFeed(before, S.sermons));
+  updateDock();
 }
 async function loadSermonsCache() {
   try { const d = await idb.getDoc("sermons"); if (d && d.text) { S.sdoc = d; applySermons(parseSermonText(d.text)); } }
@@ -775,7 +849,7 @@ async function refreshSermons(manual) {
     if (manual) toast(S.serror, 4500);
   } finally {
     S.sloading = false; renderSync();
-    if (S.mode === "sermons" && !S.sermons.size) resetFeed();
+    if (!S.sermons.size) resetTabs(["sermons"]);
   }
 }
 
@@ -805,6 +879,9 @@ async function pinEntered() {
 function unlockSermons() {
   S.unlocked = true; updateTabs();
   $("#sheetPin").close();
+  // the Sermons feed was showing the lock screen: build the real one
+  const sv = views.sermons;
+  if (sv.built && (sv === view ? cards : sv.cards).some(c => c.intro)) withView("sermons", resetFeed);
   const done = pinDone; pinDone = null;
   if (done) done();
   if (!S.sermons.size || !S.sdoc || Date.now() - (S.sdoc.at || 0) > 10 * 60e3) refreshSermons(false);
@@ -813,7 +890,10 @@ function lockSermons() {
   if (!S.unlocked) return;
   S.unlocked = false; updateTabs();
   $$("dialog.sheet[open]").forEach(d => d.close());
-  if (S.mode === "sermons" || (S.mode === "fav" && cards.some(c => c.qid && getQ(c.qid) && getQ(c.qid).s))) resetFeed();
+  // the Sermons feed goes back to its lock screen; Favorites only starts over if it was showing a sermon
+  resetTabs(["sermons"]);
+  const fv = views.fav, fcards = fv === view ? cards : fv.cards;
+  if (fv.built && fcards.some(c => c.qid && getQ(c.qid) && getQ(c.qid).s)) resetTabs(["fav"]);
 }
 $("#pinPad").addEventListener("click", e => {
   const b = e.target.closest("button[data-k]"); if (!b) return;
@@ -852,7 +932,7 @@ function connect(v) {
   v = String(v || "").trim();
   if (!validSrc(v)) { toast("Paste the web app link from Apps Script. It starts with https://script.google.com/"); return false; }
   S.src = v; store.set("src", v); S.error = "";
-  resetFeed(); refresh(true);
+  resetTabs(TABS); refresh(true);
   return true;
 }
 
@@ -875,7 +955,7 @@ async function submitAdd(e) {
     $("#f-text").value = ""; $("#f-author").value = "";
     $("#sheetAdd").close();
     const k = norm(t), nxt = cards[current + 1];
-    if (S.quotes.has(k) && nxt && nxt.qid) { deck = deck.filter(id => id !== k); deck.unshift(nxt.qid); nxt.qid = k; fillCard(nxt); toast("Saved to your doc. It's next in your feed.", 2200); }
+    if (S.quotes.has(k) && nxt && nxt.qid && S.mode !== "sermons" && !(getQ(nxt.qid) || {}).s) { deck = deck.filter(id => id !== k); deck.unshift(nxt.qid); nxt.qid = k; fillCard(nxt); toast("Saved to your doc. It's next in your feed.", 2200); }
     else toast("Saved to your Google Doc");
   } catch (err) {
     if (isNetErr(err)) {
@@ -909,10 +989,7 @@ $("#qvCopy").onclick = () => viewing && copyText(quoteText(viewing));
 $("#qvFeed").onclick = () => {
   const q = viewing; if (!q) return;
   $$("dialog.sheet[open]").forEach(d => d.close());
-  const tab = q.s ? "sermons" : (S.mode === "fav" && isFav(q) ? "fav" : "quotes");
-  openFirst = q.id;
-  if (S.mode !== tab) { S.mode = tab; store.set("mode", tab); updateTabs(); updateCount(); }
-  resetFeed();
+  openOn(q.id);
 };
 $("#qvHide").onclick = () => {
   const q = viewing; if (!q) return;
@@ -920,8 +997,10 @@ $("#qvHide").onclick = () => {
   const b = $("#qvHide");
   if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "Tap again to hide it"; return; }
   S.hidden.add(q.id); saveHidden();
-  deck = deck.filter(id => id !== q.id);
-  cards.forEach((c, i) => { if (c.qid === q.id && i >= current) { const id = drawId(); if (id) { c.qid = id; fillCard(c); } } });
+  eachView(() => {
+    deck = deck.filter(id => id !== q.id);
+    cards.forEach((c, i) => { if (c.qid === q.id && i >= current) { const id = drawId(); if (id) { c.qid = id; fillCard(c); } } });
+  });
   $("#sheetQuote").close(); updateDock();
   toast("Hidden from your feed on this phone");
 };
@@ -1069,11 +1148,10 @@ $("#srcSave").onclick = () => { if (connect($("#f-src").value)) { $("details").o
 function syncSettings() {
   $$("[data-bg]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.bg === S.bg)));
   $$("[data-font]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.font === S.font)));
-  $("#f-online").checked = S.online;
   const np = S.photos.length;
-  const src = [np ? `your ${fmt(np)} photo${np === 1 ? "" : "s"}` : "", S.online ? "online nature photos" : ""].filter(Boolean).join(" and ");
+  const src = np ? `your ${fmt(np)} photo${np === 1 ? "" : "s"}` : "";
   $("#bgNote").textContent = S.bg === "painted" ? "Every quote gets a freshly painted scene: mountains, lakes, oceans, night skies, auroras, misty forests, dunes and clouds."
-    : !src ? "Add a few photos below or turn on online photos. Until then you'll see painted scenes."
+    : !src ? "Add a few photos below. Until then you'll see painted scenes."
     : S.bg === "mix" ? `About half your quotes show ${src}; the rest get painted scenes.` : `Each quote shows one of ${src}.`;
   const hidden = [...S.hidden].filter(k => S.quotes.has(k) || S.sermons.has(k)).length;
   $("#hiddenField").hidden = !hidden;
@@ -1083,15 +1161,18 @@ function syncSettings() {
   // screen measurements help when something doesn't fill the screen
   $("#version").textContent = `Words of Life ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxHeight()} · stage ${stageH} · top ${probeBox().top}${standaloneMode() ? " · home screen" : ""}`;
 }
-function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid && c.kind !== "paper") { releaseBg(c); assignBg(c); } }); schedule(); }
+function rebg(all) {
+  eachView(() => cards.forEach((c, i) => { if ((all || view !== views[S.mode] || i !== current) && c.qid && c.kind !== "paper") { releaseBg(c); assignBg(c); } }));
+  schedule(); TABS.forEach(m => { if (m !== view.m && views[m].built) prepare(m); });
+}
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });
-$("#f-online").onchange = e => { S.online = e.target.checked; store.set("online", S.online); syncSettings(); rebg(); };
 $$("[data-font]").forEach(b => b.onclick = () => {
   S.font = b.dataset.font; store.set("font", S.font); syncSettings();
   // a fixed style applies everywhere; Random re-picks every quote except the one on screen
-  cards.forEach((c, i) => { if (c.qid && (S.font !== "random" || i !== current)) { c.font = pickFont(); c.el.dataset.font = c.font; } });
+  const active = view;
+  eachView(() => cards.forEach((c, i) => { if (c.qid && (S.font !== "random" || view !== active || i !== current)) { c.font = pickFont(); c.el.dataset.font = c.font; } }));
 });
-$("#unhideAll").onclick = () => { S.hidden.clear(); saveHidden(); syncSettings(); resetFeed(); toast("All quotes are back in your feed"); };
+$("#unhideAll").onclick = () => { S.hidden.clear(); saveHidden(); syncSettings(); resetTabs(TABS); toast("All quotes are back in your feed"); };
 
 function renderPhotos() {
   const g = $("#photoGrid"); g.innerHTML = "";
@@ -1133,11 +1214,11 @@ async function uploadPhotos(files) {
 }
 
 /* ============ boot ============ */
-if (!["quotes", "fav", "sermons"].includes(S.mode)) S.mode = "quotes";
 updateTabs();
 if (S.doc && S.doc.text) S.quotes = new Map(parseDocText(S.doc.text).map((p, i) => [p.k, { id: p.k, t: p.t, a: p.a, i }]));
 takeHashQuote();
-updateCount(); resetFeed();
+updateCount(); resetFeed(); placeTrack(0, 0);
+if (S.mode === "sermons" && !S.unlocked) setTimeout(() => askPin(() => showTab("sermons", 0)), 300);
 // photos load after the first screens are built, so give those screens a fresh pick once they're in
 loadPhotos().then(() => {
   if (!S.photos.length) return;
@@ -1151,16 +1232,16 @@ loadSermonsCache();
 document.fonts && document.fonts.ready.then(() => cards.forEach(c => { if (c.type === "sermon") fitSermon(c); }));
 
 // check the doc again when the app comes back to the foreground after a while
-window.addEventListener("hashchange", () => { if (takeHashQuote()) resetFeed(); });
-navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.open) { openFirst = e.data.open; resetFeed(); } });
+window.addEventListener("hashchange", () => { if (takeHashQuote()) openOn(openFirst); });
+navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.open) openOn(e.data.open); });
 let lastCheck = Date.now();
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && Date.now() - lastCheck > 10 * 60e3) { lastCheck = Date.now(); refresh(false); }
 });
 let rz;
-window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { cards.forEach(c => { if (c.qid) fillCard(c); releaseBg(c); }); schedule(); }, 250); });
+window.addEventListener("resize", () => { placeTrack(0, 0); clearTimeout(rz); rz = setTimeout(() => { cards.forEach(c => { if (c.qid) fillCard(c); releaseBg(c); }); schedule(); }, 250); });
 // a long sermon's fade goes away once it's scrolled to the end (scroll events don't bubble, so listen while capturing)
-feed.addEventListener("scroll", e => {
+track.addEventListener("scroll", e => {
   const b = e.target; if (!b.classList || !b.classList.contains("s-body")) return;
   b.parentElement.classList.toggle("at-end", b.scrollTop + b.clientHeight >= b.scrollHeight - 4);
 }, true);

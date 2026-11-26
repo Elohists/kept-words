@@ -39,6 +39,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, label:focus-w
 
 /* ---------- Feed ---------- */
 #stage { position: absolute; top: 0; left: 0; right: 0; height: var(--stage-h, 100%); overflow: hidden; }
+/* the three tab feeds sit side by side on a track that slides sideways */
+#track { position: absolute; top: 0; left: 0; height: 100%; width: 300%; will-change: transform; }
+#track > .feed { right: auto; left: calc(var(--i) * 100% / 3); width: calc(100% / 3); }
 .feed {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow-y: auto; overflow-x: hidden;
   scroll-snap-type: y mandatory; overscroll-behavior-y: contain;
