@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.1";
+const APP_VERSION = "1.2.2";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -731,7 +731,7 @@ async function refreshSermons(manual) {
 /* PIN: fixed (chosen by the owner) and not changeable in the app. Only its salted SHA-256 fingerprint is
    kept here, not the digits. It keeps Sermons private in the app; it isn't encryption.
    Unlocked until the app goes to the background. */
-const PIN_SALT = "kw-sermons", PIN_HASH = "d3e97f4a1ea9a32bdb121b7c16d3e09add2a0e4be355f51c0741976f41a7efd8";
+const PIN_SALT = "kw-sermons", PIN_HASH = "6ec71d32e53fa271cc0a820c2aaf92e9cc1874485d67779d1ff560f15bb701f6", PIN_LENGTH = 6;
 async function pinHash(pin) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(PIN_SALT + ":" + pin));
   return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
@@ -767,9 +767,9 @@ function lockSermons() {
 $("#pinPad").addEventListener("click", e => {
   const b = e.target.closest("button[data-k]"); if (!b) return;
   if (b.dataset.k === "del") { pinDigits = pinDigits.slice(0, -1); drawPin(); return; }
-  if (pinDigits.length >= 4) return;
+  if (pinDigits.length >= PIN_LENGTH) return;
   pinDigits += b.dataset.k; drawPin();
-  if (pinDigits.length === 4) setTimeout(pinEntered, 120);
+  if (pinDigits.length === PIN_LENGTH) setTimeout(pinEntered, 120);
 });
 $("#sermonRefresh").onclick = () => { if (!S.unlocked) { askPin(() => refreshSermons(true)); return; } refreshSermons(true); };
 // lock Sermons whenever the app goes to the background (this also hides them from the app switcher)
