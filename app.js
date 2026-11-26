@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -734,10 +734,28 @@ function updateTabs() {
 const EASE = "cubic-bezier(.22,.8,.24,1)";
 const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 // put the track at the active tab, offset by dx (while dragging), sliding over ms
+// Each feed is one screen wide and sits in place; only while sliding are feeds moved sideways, each on its
+// own. At rest the active feed has no transform at all: on iPhone, text inside a scrolling feed that sits in
+// a shifted, extra-wide layer wasn't drawn (sermons showed only their paper background).
+let settleT;
 function placeTrack(dx = 0, ms = 0) {
-  const w = track.parentNode.clientWidth || window.innerWidth;
-  track.style.transition = ms && !reduceMotion() ? `transform ${ms}ms ${EASE}` : "none";
-  track.style.transform = `translate3d(${-TABS.indexOf(view.m) * w + dx}px,0,0)`;
+  const w = track.clientWidth || window.innerWidth, ai = TABS.indexOf(view.m);
+  const anim = ms && !reduceMotion();
+  clearTimeout(settleT);
+  TABS.forEach((m, i) => {
+    const el = views[m].el, off = (i - ai) * w + dx;
+    const onScreen = Math.abs(off) < w;
+    el.style.transition = anim ? `transform ${ms}ms ${EASE}` : "none";
+    el.style.transform = off ? `translate3d(${off}px,0,0)` : "none";
+    // feeds that can't be seen are hidden; while sliding, keep the ones on their way in or out visible
+    if (onScreen || anim) el.style.visibility = "visible";
+  });
+  const settle = () => TABS.forEach((m, i) => {
+    const el = views[m].el;
+    el.style.transition = "none";
+    el.style.visibility = i === TABS.indexOf(view.m) || (dx && Math.abs((i - TABS.indexOf(view.m)) * w + dx) < w) ? "visible" : "hidden";
+  });
+  if (anim) settleT = setTimeout(settle, ms + 40); else settle();
 }
 // build a tab's feed the first time it's needed and make sure its current screen has its background
 function prepare(m) {
