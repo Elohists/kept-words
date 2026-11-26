@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.2";
+const APP_VERSION = "1.2.3";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -359,6 +359,8 @@ function fillSermon(c, q) {
     body.appendChild(p);
   }
   fitSermon(c);
+  // a card built before it's on the page (e.g. the first one after View in feed) is measured once it is
+  if (!c.el.isConnected) requestAnimationFrame(() => fitSermon(c));
 }
 /* size the sermon's text so the whole outline fits its panel; very long ones scroll inside the panel */
 function fitSermon(c) {
@@ -369,7 +371,7 @@ function fitSermon(c) {
   const fits = px => { art.style.setProperty("--ss", px + "px"); return body.scrollHeight <= body.clientHeight + 1; };
   const MAX = 17.5, MIN = 11.5;
   if (fits(MAX)) return;
-  if (!fits(MIN)) { art.classList.add("scrolls"); fits(12.5); return; }
+  if (!fits(MIN)) { art.classList.add("scrolls"); art.classList.remove("at-end"); fits(12.5); body.scrollTop = 0; return; }
   let lo = MIN, hi = MAX;
   for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
   fits(Math.floor(lo * 4) / 4);
@@ -1104,6 +1106,11 @@ document.addEventListener("visibilitychange", () => {
 });
 let rz;
 window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { cards.forEach(c => { if (c.qid) fillCard(c); releaseBg(c); }); schedule(); }, 250); });
+// a long sermon's fade goes away once it's scrolled to the end (scroll events don't bubble, so listen while capturing)
+feed.addEventListener("scroll", e => {
+  const b = e.target; if (!b.classList || !b.classList.contains("s-body")) return;
+  b.parentElement.classList.toggle("at-end", b.scrollTop + b.clientHeight >= b.scrollHeight - 4);
+}, true);
 // tapping hides the buttons, which gives a sermon's panel more room: fit it again
 new MutationObserver(() => setTimeout(() => cards.forEach((c, i) => { if (c.type === "sermon" && Math.abs(i - current) <= 2) fitSermon(c); }), 260))
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });

@@ -29,6 +29,7 @@ img { max-width: 100%; }
    itself is drawn all the way down. --stage-h is set by app.js. */
 body {
   min-height: var(--stage-h, 100%); margin: 0;
+  touch-action: manipulation; /* quick taps (like typing the PIN) never trigger double-tap zoom */
   background: var(--night); color: var(--paper);
   font-family: var(--f-sans); font-size: 15px;
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
@@ -308,6 +309,8 @@ body.bare .card.sermon .s { top: calc(env(safe-area-inset-top, 0px) + 18px); bot
 }
 .s.scrolls .s-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: auto;
   -webkit-mask-image: linear-gradient(#000 88%, transparent); mask-image: linear-gradient(#000 88%, transparent); padding-bottom: 1.5em; }
+/* once a long sermon is scrolled to its end, the fade goes away so the last lines read clearly */
+.s.scrolls.at-end .s-body { -webkit-mask-image: none; mask-image: none; }
 
 /* ---------- PIN ---------- */
 .pin { align-items: center; text-align: center; }
@@ -320,6 +323,7 @@ body.bare .card.sermon .s { top: calc(env(safe-area-inset-top, 0px) + 18px); bot
 .pin-pad button {
   width: 72px; height: 72px; border-radius: 50%; border: 0; background: var(--sheet-2); color: var(--paper);
   font: 500 28px/1 var(--f-sans); cursor: pointer; font-variant-numeric: tabular-nums;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none;
 }
 .pin-pad button:active { background: rgba(255, 255, 255, .18); }
 .pin-pad button[data-k="del"] { background: transparent; font-size: 22px; }
