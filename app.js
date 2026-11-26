@@ -1,4 +1,4 @@
-/* Kept Words — app logic.
+/* Words of Life (repository: kept-words) — app logic.
    Quotes (and sermons, from a second doc) come from the owner's Google Docs through a private
    Apps Script web app (see apps-script/Code.gs). Sermons open with a PIN kept on the device.
    The connection link is kept only on the device (localStorage), never in this code.
@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.3";
+const APP_VERSION = "1.2.4";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -143,7 +143,7 @@ function errText(e) {
   if (c === "access") return "Google asked for a sign-in. In Apps Script, set the web app's access to “Anyone”, deploy again, and paste the new link.";
   if (c === "script") return "Your script answered with an error: " + (e.message || "unknown") + ".";
   if (c === "timeout") return "Google took too long to answer. Try Refresh in a minute.";
-  if (c === "bad") return "That link didn't answer like the Kept Words script. Check that you pasted the web app link that ends in /exec.";
+  if (c === "bad") return "That link didn't answer like the Words of Life script. Check that you pasted the web app link that ends in /exec.";
   // Google answers a link it won't serve publicly with a sign-in page, which the browser blocks; it looks like a network error
   if (c === "network") return "Google didn't hand over your quotes. Open your connection link in Safari: if it shows a sign-in page, set the web app's access to “Anyone” (Deploy → Manage deployments → edit → New version), and check the link ends in /exec.";
   return "Couldn't reach your Google Doc. Check your connection and try Refresh.";
@@ -398,9 +398,9 @@ function introCard(kind) {
   const fig = document.createElement("div");
   fig.className = "q intro";
   if (kind === "loading") {
-    fig.innerHTML = "<h1>Kept Words</h1><p>Opening your quotes…</p>";
+    fig.innerHTML = "<h1>Words of Life</h1><p>Opening your quotes…</p>";
   } else if (kind === "connect") {
-    fig.innerHTML = `<h1>Kept Words</h1>
+    fig.innerHTML = `<h1>Words of Life</h1>
       <p>Connect your Google Doc and every quote in it comes back to you here, one at a time.</p>
       <input type="url" id="f-connect" placeholder="Paste your connection link" autocomplete="off" spellcheck="false" aria-label="Connection link">
       <div class="row"><button class="btn solid" data-act="connect">Connect</button></div>
@@ -653,7 +653,7 @@ async function sharePicture(c) {
   try {
     const blob = await renderPicture(c);
     const q = getQ(c.qid);
-    const name = "kept-words-" + (q ? norm(q.t).split(" ").slice(0, 5).join("-") : "quote") + ".jpg";
+    const name = "words-of-life-" + (q ? norm(q.t).split(" ").slice(0, 5).join("-") : "quote") + ".jpg";
     shotFile = new File([blob], name, { type: "image/jpeg" });
     if (shotUrl) URL.revokeObjectURL(shotUrl);
     shotUrl = URL.createObjectURL(blob);
@@ -932,11 +932,11 @@ async function sendSub(sub) {
 async function turnOnNotifications() {
   if (notifBusy) return;
   if (!S.src) { toast("Connect your Google Doc first."); return; }
-  if (!pushSupported() || !standalone()) { renderNotif(); toast("Add Kept Words to your Home Screen first, then turn this on from there.", 4000); return; }
+  if (!pushSupported() || !standalone()) { renderNotif(); toast("Add Words of Life to your Home Screen first, then turn this on from there.", 4000); return; }
   notifBusy = true; renderNotif();
   try {
     const perm = await Notification.requestPermission();
-    if (perm !== "granted") { toast("Notifications are off for Kept Words. You can allow them in iPhone Settings → Notifications.", 4500); return; }
+    if (perm !== "granted") { toast("Notifications are off for this app. You can allow them in iPhone Settings → Notifications.", 4500); return; }
     const reg = await navigator.serviceWorker.ready;
     const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64url(VAPID_PUBLIC) });
     await sendSub(sub);
@@ -967,8 +967,8 @@ async function renderNotif() {
   $("#notifToggle").classList.toggle("primary", !on);
   $("#quietRow").hidden = !on && !(pushSupported() && standalone());
   let t;
-  if (!pushSupported() || !standalone()) t = "On iPhone, notifications work once Kept Words is on your Home Screen: in Safari tap Share, then Add to Home Screen, and open it from there.";
-  else if (Notification.permission === "denied") t = "Notifications are blocked for Kept Words. Allow them in iPhone Settings → Notifications → Kept Words.";
+  if (!pushSupported() || !standalone()) t = "On iPhone, notifications work once Words of Life is on your Home Screen: in Safari tap Share, then Add to Home Screen, and open it from there.";
+  else if (Notification.permission === "denied") t = "Notifications are blocked for this app. Allow them in iPhone Settings → Notifications, under the name shown on its Home Screen icon.";
   else if (on) t = "A random quote arrives at the top of every hour, except during quiet hours. Times can drift by a few minutes.";
   else t = "Get a random quote from your collection every hour, with quiet hours overnight.";
   $("#notifNote").textContent = t;
@@ -1028,7 +1028,7 @@ function syncSettings() {
   const favs = [...S.quotes.values()].filter(isFav).length, au = new Set([...S.quotes.values()].map(q => q.a).filter(Boolean)).size;
   $("#setStats").textContent = S.quotes.size ? `${fmt(S.quotes.size)} quotes from ${fmt(au)} people · ${fmt(favs)} favorites` : "";
   // screen measurements help when something doesn't fill the screen
-  $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxHeight()} · stage ${stageH} · top ${probeBox().top}${standaloneMode() ? " · home screen" : ""}`;
+  $("#version").textContent = `Words of Life ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxHeight()} · stage ${stageH} · top ${probeBox().top}${standaloneMode() ? " · home screen" : ""}`;
 }
 function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid && c.kind !== "paper") { releaseBg(c); assignBg(c); } }); schedule(); }
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });

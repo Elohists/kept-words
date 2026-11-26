@@ -1,4 +1,6 @@
-# Kept Words — notes for Claude
+# Words of Life (repository: kept-words) — notes for Claude
+
+The app is called **Words of Life** (renamed from Kept Words). The repository, web address `/kept-words/`, storage keys (`kw.*`) and cache names keep the old name on purpose: changing them would wipe what's saved on the phone.
 
 Read README.md first for the architecture and the owner's setup.
 

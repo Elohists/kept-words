@@ -1,4 +1,6 @@
-# Kept Words
+# Words of Life
+
+The app was first called Kept Words; the repository and its web address (`/kept-words/`) keep that name.
 
 A home-screen web app for iPhone that shows the quotes you keep, one at a time, in random order, over painted scenes or photos. The quotes come from a private Google Doc. The app can add new quotes to the doc and sends a random quote every hour.
 

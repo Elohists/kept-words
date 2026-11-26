@@ -1,6 +1,6 @@
-/* Kept Words — service worker: makes the app open with no internet.
+/* Words of Life — service worker: makes the app open with no internet.
    Bump VERSION whenever any app file changes so phones pick up the new files. */
-const VERSION = "kw-1.2.3";
+const VERSION = "kw-1.2.4";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "painter.js", "docparse.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 const RUNTIME = "kw-runtime";
@@ -69,7 +69,7 @@ self.addEventListener("push", e => {
   e.waitUntil((async () => {
     let sent = null;
     try { sent = e.data ? e.data.json() : null; } catch {}
-    const q = (await pickSaved()) || sent || { t: "Open Kept Words for a quote.", a: "", k: "" };
+    const q = (await pickSaved()) || sent || { t: "Open Words of Life for a quote.", a: "", k: "" };
     // the quote is the title; the author, if any, sits underneath
     await self.registration.showNotification(q.t, {
       body: q.a ? "— " + q.a : "",
