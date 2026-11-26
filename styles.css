@@ -183,6 +183,7 @@ dialog.sheet {
   display: none; flex-direction: column;
 }
 dialog.sheet[open] { display: flex; animation: up .28s cubic-bezier(.2,.8,.2,1) both; }
+dialog.sheet:focus { outline: none; }
 @keyframes up { from { transform: translateY(40px); opacity: .4; } to { transform: none; opacity: 1; } }
 #sheetScrim { position: absolute; inset: 0; z-index: 15; background: rgba(0,0,0,.55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); touch-action: none; }
 .sh-head {

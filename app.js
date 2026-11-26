@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.6";
+const APP_VERSION = "1.2.7";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -804,6 +804,10 @@ function openSheet(d) {
   $$("dialog.sheet[open]").forEach(o => { if (o !== d) o.close(); });
   $("#sheetScrim").hidden = false;
   if (!d.open) d.show();
+  // opening a panel focuses its first button (often Cancel), which iOS outlines like keyboard focus;
+  // focus the panel itself instead, so nothing is highlighted (panels that need typing focus their field after)
+  const f = document.activeElement;
+  if (f && d.contains(f) && f.matches("button, a")) { d.tabIndex = -1; d.focus({ preventScroll: true }); }
 }
 $$("dialog.sheet").forEach(d => {
   d.addEventListener("click", e => { if (e.target.closest("[data-close]")) d.close(); });
