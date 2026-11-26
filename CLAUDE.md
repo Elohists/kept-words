@@ -22,7 +22,7 @@ Read README.md first for the architecture and the owner's setup.
 - **The codes in brackets are never shown in the app**; they stay in the doc. **Topics aren't shown either** (the parser still reads them).
 - Sermons always sit on a papyrus / parchment / old-paper background (`paintPaper` in `painter.js`), in dark ink with red scripture tags, whatever the quotes' background setting.
 - Sermon cards size their text to fit the panel (`fitSermon`, 11.5–17.5 px); ~4% of very long ones scroll inside the panel. No tap-to-expand.
-- Tabs: Quotes · Favorites · Sermons. One Favorites tab holds both; favorite sermons only show while Sermons is unlocked.
+- Tabs: Quotes · Favorites · Sermons, by tapping the top bar or swiping left/right on the feed (a clear sideways flick; Sermons still asks for the PIN). One Favorites tab holds both; favorite sermons only show while Sermons is unlocked.
 - **The Sermons PIN is fixed by the owner and can't be set, changed or reset in the app.** It is 6 digits. Only its salted SHA-256 fingerprint is in `app.js` (`PIN_HASH`, with `PIN_LENGTH`); to change it, compute `sha256("kw-sermons:" + pin)`, and match the dots in `index.html` to the length. Sermons lock whenever the app goes to the background. It's a privacy screen, not encryption — the repo is public, so a short PIN's fingerprint can be worked out by anyone determined.
 - The library's item panel has **View in feed**, which restarts the feed on that quote or sermon (switching tabs if needed).
 - Hourly notifications are quotes only. Sermons are shared as text, not pictures.

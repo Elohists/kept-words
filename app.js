@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.7";
+const APP_VERSION = "1.2.8";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -709,6 +709,35 @@ function setMode(m) {
 $("#modeQuotes").onclick = () => S.mode !== "quotes" && setMode("quotes");
 $("#modeFav").onclick = () => S.mode !== "fav" && setMode("fav");
 $("#modeSermons").onclick = () => { if (S.mode === "sermons" && S.unlocked) return; if (S.unlocked) setMode("sermons"); else askPin(() => setMode("sermons")); };
+
+/* swipe left or right on the feed to move between Quotes · Favorites · Sermons (Sermons still asks for the PIN) */
+const TABS = ["quotes", "fav", "sermons"];
+function slideIn(dir) {
+  if (!feed.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  feed.animate([{ transform: `translateX(${dir * 56}px)`, opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" });
+}
+function goTab(m, dir) {
+  const show = () => { setMode(m); slideIn(dir); };
+  if (m === "sermons" && !S.unlocked) askPin(show); else show();
+}
+let swipe = null;
+feed.addEventListener("touchstart", e => {
+  const t = e.touches[0];
+  swipe = e.touches.length === 1 ? { x: t.clientX, y: t.clientY, at: Date.now() } : null;
+}, { passive: true });
+feed.addEventListener("touchend", e => {
+  if (!swipe) return;
+  const t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y, dt = Date.now() - swipe.at;
+  swipe = null;
+  // a clear sideways flick: far enough, mostly horizontal, not a slow drag
+  if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6 || dt > 700) return;
+  if (document.querySelector("dialog.sheet[open]")) return;
+  const next = TABS.indexOf(S.mode) + (dx < 0 ? 1 : -1);
+  if (next < 0 || next >= TABS.length) return;
+  clearTimeout(tapTimer); lastTap = 0; // a swipe isn't a tap
+  goTab(TABS[next], dx < 0 ? 1 : -1);
+}, { passive: true });
+feed.addEventListener("touchcancel", () => { swipe = null; }, { passive: true });
 
 /* ============ Sermons: second doc and PIN ============ */
 function applySermons(parsed) {
