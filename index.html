@@ -94,6 +94,7 @@
     <button class="txt-btn" data-close>Done</button>
   </div>
   <div class="sh-body">
+    <button class="pbtn primary" id="qvFeed" hidden>View in feed</button>
     <p class="quote-view" id="qvText"></p>
     <div class="a" id="qvAuthor"></div>
     <div class="actions-row">
@@ -135,12 +136,6 @@
       <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
       <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
       <span></span><button data-k="0">0</button><button data-k="del" aria-label="Delete">⌫</button>
-    </div>
-    <button class="txt-btn" id="pinForgot">Forgot your PIN?</button>
-    <div id="pinReset" hidden class="field">
-      <span>Reset with your connection link</span>
-      <input type="url" id="f-pinreset" class="doclink" placeholder="Paste your connection link" autocomplete="off" spellcheck="false" aria-label="Connection link">
-      <button class="pbtn" id="pinResetGo">Reset PIN</button>
     </div>
   </div>
 </dialog>
@@ -192,10 +187,7 @@
     </div>
     <div class="field" id="sermonField"><span>Sermons</span>
       <p class="note" id="sermonNote"></p>
-      <div class="actions-row">
-        <button class="pbtn grow" id="sermonRefresh">Refresh sermons</button>
-        <button class="pbtn grow" id="pinChange">Change PIN</button>
-      </div>
+      <button class="pbtn" id="sermonRefresh">Refresh sermons</button>
     </div>
     <div class="field"><span>Notifications</span>
       <p class="note" id="notifNote"></p>

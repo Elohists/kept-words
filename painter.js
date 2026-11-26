@@ -294,3 +294,94 @@ function paint(canvas, seed, scene) {
   } catch { return .4; }
 }
 
+
+/* ---------- Sermon backgrounds: papyrus, parchment and old paper ----------
+   Each is drawn from a seed: a warm base, soft mottling, fibers (woven strips for papyrus),
+   foxing spots and stains, and darkened edges. */
+const PAPERS = [
+  // base, dark (edges, stains), fiber
+  ["#e6d2a3", "#8e6a38", "#c7a96f"],
+  ["#efe2c2", "#a2805a", "#d8c398"],
+  ["#e8d6ad", "#86613a", "#cbb183"],
+  ["#dcc391", "#71502c", "#bc9b62"],
+  ["#f0e5cb", "#a98c64", "#dac7a1"],
+  ["#e3cfa0", "#7d5a2f", "#c4a46c"],
+].map(p => p.map(hx));
+function paintPaper(canvas, seed) {
+  const W = canvas.width, H = canvas.height, x = canvas.getContext("2d"), r = rng(seed);
+  const [base, dark, fiber] = pick(r, PAPERS);
+  const kind = pick(r, ["papyrus", "papyrus", "parchment", "paper"]);
+  const u = Math.max(W, H) / 1000;
+  x.fillStyle = rgba(base); x.fillRect(0, 0, W, H);
+  // mottling: darker and lighter clouds
+  for (let i = 0; i < 90; i++) glow(x, r() * W, r() * H, W * (.06 + r() * .4), mix(base, dark, .35 + r() * .4), .06 + r() * .09);
+  for (let i = 0; i < 40; i++) glow(x, r() * W, r() * H, W * (.05 + r() * .25), mix(base, [255, 250, 236], .55), .07 + r() * .08);
+  if (kind === "papyrus") {
+    // woven strips: horizontal layer over a fainter vertical one
+    const strip = (vertical, alpha) => {
+      const len = vertical ? W : H, across = vertical ? H : W;
+      let p = -r() * 30 * u;
+      while (p < len) {
+        const w = (18 + r() * 26) * u;
+        x.fillStyle = rgba(mix(base, r() < .5 ? dark : [255, 248, 230], .1 + r() * .12), alpha * (.5 + r()));
+        vertical ? x.fillRect(p, 0, w, across) : x.fillRect(0, p, across, w);
+        x.fillStyle = rgba(dark, alpha * .9);
+        vertical ? x.fillRect(p, 0, Math.max(1, u * .8), across) : x.fillRect(0, p, across, Math.max(1, u * .8));
+        p += w;
+      }
+    };
+    strip(true, .09); strip(false, .16);
+    // long fibers
+    x.lineCap = "round";
+    for (let i = 0; i < 900; i++) {
+      const y = r() * H, x0 = r() * W, len = (40 + r() * 260) * u;
+      x.strokeStyle = rgba(r() < .7 ? mix(fiber, dark, .2 + r() * .5) : mix(base, [255, 250, 236], .5), .08 + r() * .16);
+      x.lineWidth = (.4 + r() * 1.4) * u;
+      x.beginPath(); x.moveTo(x0, y);
+      x.quadraticCurveTo(x0 + len / 2, y + (r() - .5) * 6 * u, x0 + len, y + (r() - .5) * 4 * u); x.stroke();
+    }
+    for (let i = 0; i < 260; i++) {
+      const x0 = r() * W, y = r() * H, len = (30 + r() * 140) * u;
+      x.strokeStyle = rgba(mix(fiber, dark, r() * .4), .04 + r() * .07); x.lineWidth = (.4 + r()) * u;
+      x.beginPath(); x.moveTo(x0, y); x.lineTo(x0 + (r() - .5) * 4 * u, y + len); x.stroke();
+    }
+  } else {
+    // paper and parchment: short fibers in every direction
+    for (let i = 0; i < 1400; i++) {
+      const x0 = r() * W, y0 = r() * H, a = r() * Math.PI, len = (4 + r() * 22) * u;
+      x.strokeStyle = rgba(mix(fiber, dark, r() * .5), .04 + r() * .08); x.lineWidth = (.3 + r() * .8) * u;
+      x.beginPath(); x.moveTo(x0, y0); x.lineTo(x0 + Math.cos(a) * len, y0 + Math.sin(a) * len); x.stroke();
+    }
+  }
+  // foxing: a few soft, irregular age spots
+  const spots = kind === "paper" ? 7 : 4;
+  for (let c = 0; c < spots; c++) {
+    const cx = r() * W, cy = r() * H, size = (10 + r() * 40) * u;
+    for (let i = 0; i < 6; i++) glow(x, cx + (r() - .5) * size, cy + (r() - .5) * size, size * (.4 + r() * .6), mix(dark, [130, 80, 35], .5), .08 + r() * .1);
+  }
+  // an old fold, sometimes: a faint light and dark line across the sheet
+  if (r() < .45) {
+    const y = H * (.3 + r() * .4), tilt = (r() - .5) * 20 * u;
+    x.strokeStyle = rgba(dark, .16); x.lineWidth = 2 * u; x.beginPath(); x.moveTo(0, y); x.lineTo(W, y + tilt); x.stroke();
+    x.strokeStyle = rgba([255, 250, 238], .22); x.lineWidth = 1.5 * u; x.beginPath(); x.moveTo(0, y + 2.5 * u); x.lineTo(W, y + tilt + 2.5 * u); x.stroke();
+  }
+  // a water stain or two
+  for (let i = 0, n = Math.floor(r() * 3); i < n; i++) {
+    const cx = r() * W, cy = r() * H, rad = (60 + r() * 160) * u;
+    x.strokeStyle = rgba(dark, .07 + r() * .07); x.lineWidth = (2 + r() * 4) * u;
+    x.beginPath(); x.ellipse(cx, cy, rad, rad * (.7 + r() * .3), r() * 3, 0, 7); x.stroke();
+    glow(x, cx, cy, rad, mix(base, dark, .3), .06);
+  }
+  // fine grain
+  for (let i = 0; i < W * H / 260; i++) { x.fillStyle = rgba(r() < .5 ? dark : [255, 252, 240], .05 + r() * .08); x.fillRect(r() * W, r() * H, u * (.6 + r()), u * (.6 + r())); }
+  // aged, darkened edges
+  const g = x.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.hypot(W, H) * .58);
+  g.addColorStop(0, rgba(dark, 0)); g.addColorStop(.6, rgba(dark, .22)); g.addColorStop(1, rgba(mix(dark, [40, 25, 10], .5), .85));
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  const edge = (x0, y0, x1, y1) => { const e = x.createLinearGradient(x0, y0, x1, y1); e.addColorStop(0, rgba(mix(dark, [40, 25, 10], .3), .55)); e.addColorStop(1, rgba(dark, 0)); return e; };
+  const d = 34 * u;
+  x.fillStyle = edge(0, 0, d, 0); x.fillRect(0, 0, d, H);
+  x.fillStyle = edge(W, 0, W - d, 0); x.fillRect(W - d, 0, d, H);
+  x.fillStyle = edge(0, 0, 0, d); x.fillRect(0, 0, W, d);
+  x.fillStyle = edge(0, H, 0, H - d); x.fillRect(0, H - d, W, d);
+}

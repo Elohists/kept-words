@@ -285,27 +285,25 @@ body.unlocked .seg .ic-lock { display: none; }
 @media (max-width: 400px) { .seg .ibtn { padding: 0 9px; font-size: 13px; } }
 
 /* ---------- sermon cards: a frosted panel the text is sized to fit ---------- */
+/* sermons sit on papyrus or old paper (painter.js), in dark ink */
+.card.sermon .scrim { display: none; }
 .card.sermon .s {
-  position: absolute; z-index: 1;
+  position: absolute; z-index: 1; color: #2b1d10; text-shadow: none;
   left: max(14px, env(safe-area-inset-left, 0px)); right: max(14px, env(safe-area-inset-right, 0px));
   top: calc(env(safe-area-inset-top, 0px) + 72px); bottom: calc(env(safe-area-inset-bottom, 0px) + 90px);
   display: flex; flex-direction: column; gap: .5em;
-  padding: 1.1em 1.15em 1em; border-radius: 22px; font-size: var(--ss, 16px);
-  background: rgba(10, 11, 16, .52); border: 1px solid rgba(255, 255, 255, .1);
-  -webkit-backdrop-filter: blur(14px) saturate(120%); backdrop-filter: blur(14px) saturate(120%);
-  transition: opacity .25s ease;
+  padding: .9em 1.1em 1em; font-size: var(--ss, 16px);
 }
 body.bare .card.sermon .s { top: calc(env(safe-area-inset-top, 0px) + 18px); bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); }
-.s-topic { font: 600 .68em/1.25 var(--f-sans); letter-spacing: .15em; text-transform: uppercase; color: var(--gold); }
-.s-title { margin: 0; font-family: var(--f-serif); font-weight: 500; font-size: 1.6em; line-height: 1.12; letter-spacing: -.01em; text-wrap: balance; }
+.s-title { margin: 0; font-family: var(--f-serif); font-weight: 500; font-size: 1.6em; line-height: 1.12; letter-spacing: -.01em; text-wrap: balance; color: #22160a; text-align: center; }
 .s-body {
   flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: .42em;
-  border-top: 1px solid rgba(255, 255, 255, .13); padding-top: .75em;
+  border-top: 1px solid rgba(70, 45, 20, .28); padding-top: .75em;
 }
-.s-line { margin: 0; line-height: 1.38; color: var(--paper); overflow-wrap: anywhere; }
+.s-line { margin: 0; line-height: 1.38; color: #2b1d10; overflow-wrap: anywhere; font-family: var(--f-serif); font-size: 1.04em; }
 .s-line .ref {
   display: inline-block; margin-right: .45em; padding: 0 .42em; border-radius: 6px;
-  background: rgba(243, 207, 142, .15); color: var(--gold);
+  background: rgba(140, 45, 25, .1); color: #8a2c17;
   font: 600 .76em/1.65 var(--f-sans); letter-spacing: .01em; vertical-align: .06em; white-space: nowrap;
 }
 .s.scrolls .s-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: auto;

@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.1";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -308,6 +308,8 @@ function pickPhoto(seed) {
   return { online: seed.toString(36) };
 }
 function assignBg(c) {
+  const item = c.qid && getQ(c.qid);
+  if (item && item.s) { c.kind = "paper"; c.seed = (Math.random() * 2 ** 32) >>> 0; return; }
   c.kind = bgKind();
   c.seed = (Math.random() * 2 ** 32) >>> 0;
   if (c.kind === "photo") c.photo = pickPhoto(c.seed);
@@ -328,9 +330,7 @@ function pickFont() {
   return (lastFont = choices[Math.floor(Math.random() * choices.length)]);
 }
 const QUOTE_HTML = '<figure class="q"><blockquote class="q-text"></blockquote><figcaption class="q-meta"><span class="q-author"></span><span class="q-no"></span></figcaption></figure>';
-const SERMON_HTML = '<article class="s"><div class="s-topic"></div><h2 class="s-title"></h2><div class="s-body"></div></article>';
-// topic headings from the doc, shown above the title; the generic "Additional Notes" isn't shown
-const topicLabel = t => String(t || "").replace(/^Additional Notes:?\s*/i, "");
+const SERMON_HTML = '<article class="s"><h2 class="s-title"></h2><div class="s-body"></div></article>';
 function fillCard(c) {
   const q = getQ(c.qid); if (!q) return;
   const el = c.el, type = q.s ? "sermon" : "quote";
@@ -338,6 +338,8 @@ function fillCard(c) {
     el.querySelectorAll(".q, .s").forEach(n => n.remove());
     el.classList.toggle("sermon", type === "sermon");
     el.insertAdjacentHTML("beforeend", type === "sermon" ? SERMON_HTML : QUOTE_HTML);
+    // a card switching between quote and sermon needs the other kind of background
+    if (c.type && (c.kind === "paper") !== (type === "sermon")) { releaseBg(c); assignBg(c); if (typeof schedule === "function") schedule(); }
     c.type = type;
   }
   if (q.s) { fillSermon(c, q); return; }
@@ -348,8 +350,6 @@ function fillCard(c) {
 }
 function fillSermon(c, q) {
   const el = c.el;
-  const topic = topicLabel(q.topic), tp = el.querySelector(".s-topic");
-  tp.textContent = topic; tp.hidden = !topic;
   el.querySelector(".s-title").textContent = q.title;
   const body = el.querySelector(".s-body"); body.textContent = "";
   for (const l of q.lines) {
@@ -434,7 +434,7 @@ function takeHashQuote() {
 function resetFeed() {
   cards.forEach(c => { io.unobserve(c.el); releaseBg(c); });
   feed.innerHTML = ""; cards = []; deck = []; current = 0;
-  if (openFirst && S.quotes.has(openFirst) && !S.hidden.has(openFirst)) { deck = [openFirst]; }
+  if (openFirst && getQ(openFirst) && !getQ(openFirst).ex && (S.unlocked || !getQ(openFirst).s)) { deck = [openFirst]; }
   let lead = null;
   if (!S.src) lead = "connect";
   else if (S.mode === "sermons") lead = !S.unlocked ? "locked" : S.sermons.size ? null : (S.serror ? "serror" : "sloading");
@@ -468,6 +468,12 @@ function ensureBg(c) {
   const cv = document.createElement("canvas");
   cv.className = "bg";
   cv.width = Math.round(w * SCALE); cv.height = Math.round(h * SCALE);
+  if (c.kind === "paper") {
+    try { paintPaper(cv, c.seed); } catch (e) { console.error(e); }
+    if (c !== cards[current]) cv.classList.add("fade");
+    c.el.prepend(cv); c.bgEl = cv;
+    return;
+  }
   let lum = .4;
   try { lum = paint(cv, c.seed, c.scene); } catch (e) { console.error(e); }
   c.el.style.setProperty("--scrim", String(Math.min(.62, Math.max(.22, .18 + lum * .6)).toFixed(2)));
@@ -722,48 +728,28 @@ async function refreshSermons(manual) {
   }
 }
 
-/* PIN: stored on this phone as a salted SHA-256 hash. It keeps Sermons private in the app;
-   it isn't encryption. Unlocked until the app goes to the background. */
-const pinSaved = () => store.get("pin", null);
-async function pinHash(pin, salt) {
-  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ":" + pin));
+/* PIN: fixed (chosen by the owner) and not changeable in the app. Only its salted SHA-256 fingerprint is
+   kept here, not the digits. It keeps Sermons private in the app; it isn't encryption.
+   Unlocked until the app goes to the background. */
+const PIN_SALT = "kw-sermons", PIN_HASH = "d3e97f4a1ea9a32bdb121b7c16d3e09add2a0e4be355f51c0741976f41a7efd8";
+async function pinHash(pin) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(PIN_SALT + ":" + pin));
   return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
-let pinStep = "", pinDigits = "", pinFirst = "", pinDone = null;
-function pinSetStep(step) {
-  pinStep = step; pinDigits = ""; drawPin();
-  const notes = { unlock: "Enter your PIN", current: "Enter your current PIN", create: "Choose a 4-digit PIN for Sermons", confirm: "Enter the same PIN again" };
-  $("#pinNote").textContent = notes[step];
-  $("#pinForgot").hidden = !(step === "unlock" || step === "current");
-}
+let pinDigits = "", pinDone = null;
 function drawPin() { $$("#pinDots i").forEach((d, i) => d.classList.toggle("on", i < pinDigits.length)); }
 function pinWrong(msg) {
   const dots = $("#pinDots"); dots.classList.remove("shake"); void dots.offsetWidth; dots.classList.add("shake");
   pinDigits = ""; drawPin(); if (msg) $("#pinNote").textContent = msg;
 }
-function askPin(onDone, change) {
-  pinDone = onDone; $("#pinReset").hidden = true; $("#f-pinreset").value = "";
-  pinSetStep(!pinSaved() ? "create" : change ? "current" : "unlock");
-  $("#pinTitle").textContent = change ? "Change PIN" : "Sermons";
+function askPin(onDone) {
+  pinDone = onDone; pinDigits = ""; drawPin();
+  $("#pinNote").textContent = "Enter your PIN";
   openSheet($("#sheetPin"));
 }
 async function pinEntered() {
-  const pin = pinDigits, saved = pinSaved();
-  if (pinStep === "unlock" || pinStep === "current") {
-    if (saved && await pinHash(pin, saved.salt) === saved.hash) {
-      if (pinStep === "current") { pinSetStep("create"); return; }
-      unlockSermons(); return;
-    }
-    pinWrong("That's not it. Try again."); return;
-  }
-  if (pinStep === "create") { pinFirst = pin; pinSetStep("confirm"); return; }
-  if (pinStep === "confirm") {
-    if (pin !== pinFirst) { pinSetStep("create"); pinWrong("Those didn't match. Choose a PIN again."); return; }
-    const salt = rid(16);
-    store.set("pin", { salt, hash: await pinHash(pin, salt) });
-    toast("PIN saved");
-    unlockSermons();
-  }
+  if (await pinHash(pinDigits) === PIN_HASH) unlockSermons();
+  else pinWrong("That's not it. Try again.");
 }
 function unlockSermons() {
   S.unlocked = true; updateTabs();
@@ -785,13 +771,6 @@ $("#pinPad").addEventListener("click", e => {
   pinDigits += b.dataset.k; drawPin();
   if (pinDigits.length === 4) setTimeout(pinEntered, 120);
 });
-$("#pinForgot").onclick = () => { $("#pinReset").hidden = false; setTimeout(() => $("#f-pinreset").focus(), 50); };
-$("#pinResetGo").onclick = () => {
-  if (S.src && $("#f-pinreset").value.trim() === S.src) {
-    store.set("pin", null); $("#pinReset").hidden = true; pinSetStep("create"); toast("Choose a new PIN");
-  } else toast("That isn't your connection link.");
-};
-$("#pinChange").onclick = () => askPin(null, true);
 $("#sermonRefresh").onclick = () => { if (!S.unlocked) { askPin(() => refreshSermons(true)); return; } refreshSermons(true); };
 // lock Sermons whenever the app goes to the background (this also hides them from the app switcher)
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") lockSermons(); });
@@ -856,11 +835,12 @@ $("#addSave").onclick = submitAdd;
 
 /* one quote */
 let viewing = null;
-function openQuote(q) {
+function openQuote(q, fromLibrary) {
   viewing = q;
+  $("#qvFeed").hidden = !fromLibrary;
   $("#qvText").textContent = q.s ? quoteText(q) : q.t;
   $("#qvText").classList.toggle("sermon-view", !!q.s);
-  $("#qvAuthor").textContent = q.s ? topicLabel(q.topic) : (q.a || "");
+  $("#qvAuthor").textContent = q.s ? "" : (q.a || "");
   $("#quoteTitle").textContent = q.s ? "This sermon" : "This quote";
   $("#qvFav").textContent = isFav(q) ? "Unfavorite" : "Favorite";
   const hide = $("#qvHide"); hide.classList.remove("armed"); hide.textContent = S.hidden.has(q.id) ? "Show in my feed again" : "Hide from my feed";
@@ -870,6 +850,15 @@ function openQuote(q) {
 }
 $("#qvFav").onclick = () => { toggleFav(viewing); $("#qvFav").textContent = isFav(viewing) ? "Unfavorite" : "Favorite"; };
 $("#qvCopy").onclick = () => viewing && copyText(quoteText(viewing));
+// start the feed on this quote or sermon; the rest stays random
+$("#qvFeed").onclick = () => {
+  const q = viewing; if (!q) return;
+  $$("dialog.sheet[open]").forEach(d => d.close());
+  const tab = q.s ? "sermons" : (S.mode === "fav" && isFav(q) ? "fav" : "quotes");
+  openFirst = q.id;
+  if (S.mode !== tab) { S.mode = tab; store.set("mode", tab); updateTabs(); updateCount(); }
+  resetFeed();
+};
 $("#qvHide").onclick = () => {
   const q = viewing; if (!q) return;
   if (S.hidden.has(q.id)) { S.hidden.delete(q.id); saveHidden(); $("#sheetQuote").close(); toast("It'll show in your feed again"); return; }
@@ -895,7 +884,7 @@ function renderLibrary() {
   const total = list.length;
   if (libFilter === "fav") list = list.filter(isFav);
   if (libFilter === "noa") list = list.filter(q => !q.a);
-  if (qs) list = list.filter(q => norm(q.s ? q.title + " " + q.topic + " " + q.lines.map(l => l.r + " " + l.t).join(" ") : q.t + " " + q.a).includes(qs));
+  if (qs) list = list.filter(q => norm(q.s ? q.title + " " + q.lines.map(l => l.r + " " + l.t).join(" ") : q.t + " " + q.a).includes(qs));
   $("#libCount").textContent = qs || libFilter !== "all" ? `${fmt(list.length)} of ${fmt(total)} ${word}` : `${fmt(total)} ${word}, in your doc's order`;
   const box = $("#libList"); box.innerHTML = "";
   if (!list.length) box.innerHTML = `<div class="lib-empty">${total ? "Nothing matches that." : `No ${word} yet.`}</div>`;
@@ -903,7 +892,7 @@ function renderLibrary() {
   for (const q of list.slice(0, libShown)) {
     const b = document.createElement("button"); b.className = "lib-row"; b.dataset.id = q.id;
     const t = document.createElement("span"); t.className = "t"; t.textContent = q.s ? q.title : q.t;
-    const a = document.createElement("span"); a.className = "a"; a.textContent = (q.s ? (topicLabel(q.topic) || "Sermon") : (q.a || "No author")) + (S.hidden.has(q.id) ? " · hidden" : "");
+    const a = document.createElement("span"); a.className = "a"; a.textContent = (q.s ? "Sermon" : (q.a || "No author")) + (S.hidden.has(q.id) ? " · hidden" : "");
     b.append(t, a); if (isFav(q)) b.insertAdjacentHTML("beforeend", HEART);
     frag.appendChild(b);
   }
@@ -920,7 +909,7 @@ $("#libMore").onclick = () => { libShown += 150; renderLibrary(); };
 $("#libList").addEventListener("click", e => {
   const row = e.target.closest(".lib-row"); if (!row) return;
   const q = getQ(row.dataset.id); if (!q) return;
-  $("#sheetLibrary").close(); openQuote(q);
+  $("#sheetLibrary").close(); openQuote(q, true);
 });
 
 /* ============ hourly notifications ============ */
@@ -1017,8 +1006,7 @@ function renderSync() {
   else if (S.serror) st = S.serror;
   else if (S.sdoc && S.sdoc.at) st = `Reading “${S.sdoc.name || "your sermons doc"}”. ${fmt(S.sermons.size)} sermons, checked ${ago(S.sdoc.at)}. They update when you open Sermons.`;
   else st = "Your sermons load the first time you open the Sermons tab.";
-  $("#sermonNote").textContent = st + (pinSaved() ? " Sermons lock again whenever you leave the app." : "");
-  $("#pinChange").hidden = !pinSaved();
+  $("#sermonNote").textContent = st + " Sermons lock again whenever you leave the app.";
   $("#sermonRefresh").disabled = S.sloading || !S.src;
 }
 $("#syncNow").onclick = () => refresh(true);
@@ -1040,7 +1028,7 @@ function syncSettings() {
   // screen measurements help when something doesn't fill the screen
   $("#version").textContent = `Kept Words ${APP_VERSION} · screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · box ${boxHeight()} · stage ${stageH} · top ${probeBox().top}${standaloneMode() ? " · home screen" : ""}`;
 }
-function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid) { releaseBg(c); assignBg(c); } }); schedule(); }
+function rebg(all) { cards.forEach((c, i) => { if ((all || i !== current) && c.qid && c.kind !== "paper") { releaseBg(c); assignBg(c); } }); schedule(); }
 $$("[data-bg]").forEach(b => b.onclick = () => { S.bg = b.dataset.bg; store.set("bg", S.bg); syncSettings(); rebg(); });
 $("#f-online").onchange = e => { S.online = e.target.checked; store.set("online", S.online); syncSettings(); rebg(); };
 $$("[data-font]").forEach(b => b.onclick = () => {

@@ -14,10 +14,12 @@ Read README.md first for the architecture and the owner's setup.
 ## Sermons
 - A second doc of ~915 sermon outlines, read by `sermons_()` in `apps-script/Code.gs` (`?doc=sermons&have=<md5>`; answers `unchanged` when the phone's copy matches). Its ID goes in `SERMONS_DOC_ID` in the owner's Apps Script only, never in this repo.
 - `parseSermonText` in `docparse.js`: a title is a line ending in a label with a dash and a digit or "Preface" — "(1-19)", "(Transcription-237)", "(Sermon Collection 1-6)". Scripture refs like "(Mt 10:40–42)" have a colon and never count. Topic headings ("Prayer and the Spiritual Life") sit right above a title.
-- **The codes in brackets are never shown in the app**; they stay in the doc. "Additional Notes" topics aren't shown; "Additional Notes: Prophecy" shows as "Prophecy".
+- **The codes in brackets are never shown in the app**; they stay in the doc. **Topics aren't shown either** (the parser still reads them).
+- Sermons always sit on a papyrus / parchment / old-paper background (`paintPaper` in `painter.js`), in dark ink with red scripture tags, whatever the quotes' background setting.
 - Sermon cards size their text to fit the panel (`fitSermon`, 11.5–17.5 px); ~4% of very long ones scroll inside the panel. No tap-to-expand.
 - Tabs: Quotes · Favorites · Sermons. One Favorites tab holds both; favorite sermons only show while Sermons is unlocked.
-- Sermons need a 4-digit PIN (salted SHA-256 in localStorage `kw.pin`), and lock whenever the app goes to the background. It's a privacy screen, not encryption. Reset by pasting the connection link.
+- **The Sermons PIN is fixed by the owner and can't be set, changed or reset in the app.** Only its salted SHA-256 fingerprint is in `app.js` (`PIN_HASH`); to change it, compute `sha256("kw-sermons:" + pin)`. Sermons lock whenever the app goes to the background. It's a privacy screen, not encryption — the repo is public, so a 4-digit fingerprint can be worked out by anyone determined.
+- The library's item panel has **View in feed**, which restarts the feed on that quote or sermon (switching tabs if needed).
 - Hourly notifications are quotes only. Sermons are shared as text, not pictures.
 
 ## The full-screen layout (iPhone)
