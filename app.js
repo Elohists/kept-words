@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.2.5";
+const APP_VERSION = "1.2.6";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -337,7 +337,9 @@ function fillCard(c) {
   if (c.type !== type) {
     el.querySelectorAll(".q, .s").forEach(n => n.remove());
     el.classList.toggle("sermon", type === "sermon");
+    if (sermonSizes) el.querySelectorAll(".s").forEach(n => sermonSizes.unobserve(n));
     el.insertAdjacentHTML("beforeend", type === "sermon" ? SERMON_HTML : QUOTE_HTML);
+    if (type === "sermon" && sermonSizes) { const art = el.querySelector(".s"); art._card = c; sermonSizes.observe(art); }
     // a card switching between quote and sermon needs the other kind of background
     if (c.type && (c.kind === "paper") !== (type === "sermon")) { releaseBg(c); assignBg(c); if (typeof schedule === "function") schedule(); }
     c.type = type;
@@ -363,12 +365,28 @@ function fillSermon(c, q) {
   if (!c.el.isConnected) requestAnimationFrame(() => fitSermon(c));
 }
 /* size the sermon's text so the whole outline fits its panel; very long ones scroll inside the panel */
+// When a sermon's panel changes size after it was fitted — iOS can report the clock and home-bar areas a moment
+// after launch, which shrinks the panel; hiding or showing the buttons changes it too — fit it again.
+const sermonSizes = "ResizeObserver" in window ? new ResizeObserver(entries => {
+  for (const e of entries) {
+    const c = e.target._card;
+    if (c && c.type === "sermon" && Math.abs((c.fitH || 0) - e.target.clientHeight) > 1) fitSermon(c);
+  }
+}) : null;
 function fitSermon(c) {
   const art = c.el.querySelector(".s");
   if (!art || !c.el.isConnected || !c.el.clientHeight) return;
   const body = art.querySelector(".s-body");
   art.classList.remove("scrolls");
-  const fits = px => { art.style.setProperty("--ss", px + "px"); return body.scrollHeight <= body.clientHeight + 1; };
+  c.fitH = art.clientHeight;
+  // fits when the last line ends at least 3 px above the panel's bottom edge (measured from where the lines
+  // really are, not scrollHeight, and with a margin so "only just fits" can't round the wrong way)
+  const fits = px => {
+    art.style.setProperty("--ss", px + "px");
+    const last = body.lastElementChild; if (!last) return true;
+    return last.getBoundingClientRect().bottom <= body.getBoundingClientRect().bottom - 3;
+  };
+  body.scrollTop = 0;
   const MAX = 17.5, MIN = 11.5;
   if (fits(MAX)) return;
   if (!fits(MIN)) { art.classList.add("scrolls"); art.classList.remove("at-end"); fits(12.5); body.scrollTop = 0; return; }
@@ -508,6 +526,8 @@ const io = new IntersectionObserver(entries => {
   }
 }, { root: feed, threshold: [.55, .9] });
 function onCurrent() {
+  const cc = cards[current];
+  if (cc && cc.type === "sermon" && cc.el.querySelector(".s") && Math.abs((cc.fitH || 0) - cc.el.querySelector(".s").clientHeight) > 1) fitSermon(cc);
   if (cards.length - current < 4 && cards.some(c => c.qid)) appendCards(6);
   updateDock(); schedule();
 }
@@ -1112,7 +1132,7 @@ feed.addEventListener("scroll", e => {
   b.parentElement.classList.toggle("at-end", b.scrollTop + b.clientHeight >= b.scrollHeight - 4);
 }, true);
 // tapping hides the buttons, which gives a sermon's panel more room: fit it again
-new MutationObserver(() => setTimeout(() => cards.forEach((c, i) => { if (c.type === "sermon" && Math.abs(i - current) <= 2) fitSermon(c); }), 260))
+if (!sermonSizes) new MutationObserver(() => setTimeout(() => cards.forEach((c, i) => { if (c.type === "sermon" && Math.abs(i - current) <= 2) fitSermon(c); }), 260))
   .observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
 if ("serviceWorker" in navigator && location.protocol === "https:") {

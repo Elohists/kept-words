@@ -298,7 +298,7 @@ body.unlocked .seg .ic-lock { display: none; }
 body.bare .card.sermon .s { top: calc(env(safe-area-inset-top, 0px) + 18px); bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); }
 .s-title { margin: 0; font-family: var(--f-serif); font-weight: 500; font-size: 1.6em; line-height: 1.12; letter-spacing: -.01em; text-wrap: balance; color: #22160a; text-align: center; }
 .s-body {
-  flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: .42em;
+  flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: auto; display: flex; flex-direction: column; gap: .42em;
   border-top: 1px solid rgba(70, 45, 20, .28); padding-top: .75em;
 }
 .s-line { margin: 0; line-height: 1.38; color: #2b1d10; overflow-wrap: anywhere; font-family: var(--f-serif); font-size: 1.04em; }
