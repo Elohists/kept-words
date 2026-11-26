@@ -6,7 +6,7 @@
 (() => {
 "use strict";
 
-const APP_VERSION = "1.3.2";
+const APP_VERSION = "1.3.3";
 // public half of the notification signing key; the private half is a GitHub secret (VAPID_PRIVATE_KEY)
 const VAPID_PUBLIC = "BBAwooJ8Jzujy0fpCuCps1YyIE0aIaeAS2H8fawmGUpYjWLUONTyV3tOKAjhF56P4EDaUy-6V-q-dwyEj5AnZlA";
 
@@ -808,15 +808,23 @@ let drag = null;
 track.addEventListener("touchstart", e => {
   if (e.touches.length !== 1 || document.querySelector("dialog.sheet[open]")) { drag = null; return; }
   const t = e.touches[0];
-  drag = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastAt: Date.now(), v: 0, mode: "" };
+  drag = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastAt: Date.now(), v: 0, mode: "", top: feed.scrollTop, feed };
 }, { passive: true });
+// not passive: once a swipe is sideways, the feed must not also scroll up or down
 track.addEventListener("touchmove", e => {
   if (!drag || e.touches.length !== 1) return;
+  if (drag.mode === "x" && e.cancelable) e.preventDefault();
   const t = e.touches[0], dx = t.clientX - drag.x, dy = t.clientY - drag.y;
   if (!drag.mode) {
     if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
     drag.mode = Math.abs(dx) > Math.abs(dy) * 1.3 ? "x" : "y";   // decide once: sideways or scrolling
-    if (drag.mode === "x") { clearTimeout(tapTimer); lastTap = 0; const n = TABS[TABS.indexOf(view.m) + (dx < 0 ? 1 : -1)]; if (n) prepare(n); }
+    if (drag.mode === "x") {
+      if (e.cancelable) e.preventDefault();
+      // if the feed crept up or down before the swipe showed it was sideways, put it back
+      if (drag.feed.scrollTop !== drag.top) drag.feed.scrollTop = drag.top;
+      clearTimeout(tapTimer); lastTap = 0;
+      const n = TABS[TABS.indexOf(view.m) + (dx < 0 ? 1 : -1)]; if (n) prepare(n);
+    }
   }
   if (drag.mode !== "x") return;
   const now = Date.now();
@@ -824,7 +832,7 @@ track.addEventListener("touchmove", e => {
   const next = TABS.indexOf(view.m) + (dx < 0 ? 1 : -1);
   if (next >= 0 && next < TABS.length && !views[TABS[next]].built) prepare(TABS[next]);
   placeTrack(next < 0 || next >= TABS.length ? dx * .28 : dx, 0);   // resists past the first and last tab
-}, { passive: true });
+}, { passive: false });
 function endDrag(cancelled) {
   const d = drag; drag = null;
   if (!d || d.mode !== "x") return;
